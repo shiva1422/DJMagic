@@ -9,12 +9,14 @@
 #include "JavaCall.h"
 #include "Context.h"
 #include "Graphics.h"
-#define TAG "main"
-#define LOGI(...)((void)__android_log_print(ANDROID_LOG_INFO,__VA_ARGS__,__VA_ARGS__));
-#define LOGE(...)((void)__android_log_print(ANDROID_LOG_ERROR,__VA_ARGS__,__VA_ARGS__));
+extern "C" {
+#include <libavformat/avformat.h>
+}
+
 void initialSetup(android_app *app);
 void android_main(struct android_app* app)
 {
+    Logi("FFMpeg"," avcodec configuration %s",avcodec_configuration());
     initialSetup(app);
     app->onAppCmd=AndroidEvents::onAppCmd;
     app->onInputEvent=AndroidEvents::onInputEvent;
