@@ -7,6 +7,8 @@
 
 #include "Commons.h"
 #include "Context.h"
+#include <malloc.h>
+
 #include "EGL/egl.h"
 #if __ANDROID_API__ >= 24
 #include <GLES3/gl32.h>
@@ -25,6 +27,37 @@ public:
     static void destroyGL(Context *appContext);
     static GLenum printGlError(const char *tag);
 
+};
+
+class Shader{
+private:
+    char *source=NULL;
+public:
+    GLuint id=0;
+    bool getSource(const char *fileName);
+    GLuint compile(GLenum shaderType);
+    GLuint loadAndCompileShader(const char *fileName,GLenum shaderType)
+    {
+        bool gotSource=getSource(fileName);
+        if(gotSource)
+        {
+            id = compile(shaderType);//// id =0 error;
+
+        }
+        return id;
+
+    }
+    void deleteSource()
+    {
+        if(source)
+        {
+            free(source);
+            source=NULL;
+        }
+    }
+    static GLuint createShaderProgram(const char *vertexShader,const char *fragmentShader);
+    static GLuint linkShaders(GLuint vertexShaderId,GLuint fragmentShaderId); ////// if return 0 => error;
+    static GLuint createComputeProgram(const char *computeShaderFile);
 };
 
 

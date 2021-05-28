@@ -3,7 +3,10 @@
 //
 
 #include "Context.h"
+#include "android_native_app_glue.h"
+
 android_app* Context::app= nullptr;
+DisplayMetrics Context::displayMetrics;
 
 void DisplayMetrics::print()
 {

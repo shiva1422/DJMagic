@@ -10,7 +10,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DjMagic">
         <activity android:name=".MainActivity"
-                    android:screenOrientation="sensorLandscape">
+                   >
 
             <meta-data
                 android:name="android.app.lib_name"

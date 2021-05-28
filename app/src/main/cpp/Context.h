@@ -6,14 +6,26 @@
 #define DHWANI_AUDIOSTUDIO_CONTEXT_H
 
 #include <EGL/egl.h>
-#include "android_native_app_glue.h"
+#include <android_native_app_glue.h>
 #include "Commons.h"
+#if __ANDROID_API__ >= 24
+#include <GLES3/gl32.h>
+#elif __ANDROID_API__ >= 21
+#include <GLES3/gl31.h>
+#else
+#include <GLES3/gl3.h>
+#endif
+
+class DisplayMetrics;
 
 class Context {
 private:
     static android_app *app;
 
+
 public:
+    static DisplayMetrics displayMetrics;
+    GLuint uiProgram;
     bool bWindowInit=false,bGlInit=false,bAppFirstOpen=true;
     int32 width=0,height=0;//for graphics init .
     EGLDisplay eglDisplay=EGL_NO_DISPLAY;

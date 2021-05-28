@@ -46,6 +46,8 @@ int32_t AndroidEvents::onInputEvent(android_app* papp, AInputEvent* event)
                 context->bAppFirstOpen = false;
                 context->bWindowInit = true;
                 context->bGlInit = true;
+                context->uiProgram=Shader::createShaderProgram("shaders/ui/vertexShader.glsl","shaders/ui/fragmentShader.glsl");
+                glUseProgram(context->uiProgram);
                 return;
             }
             if (Graphics::onAppReopen(context) == STATUS_OK)

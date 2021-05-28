@@ -1,0 +1,6 @@
+28,1  - UI and Audio decoding encoding
+1-5   - decoding video and VideoFx.
+5-10  - video encoding & audioFx
+10-20 - AV Synchronization && improve
+20-25 - keep improving
+25-30 - Android Packaging relevant stuff.

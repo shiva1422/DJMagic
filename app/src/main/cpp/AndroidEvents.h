@@ -6,6 +6,9 @@
 #define DHWANI_AUDIOSTUDIO_ANDROIDEVENTS_H
 
 #include "Commons.h"
+struct android_app;
+struct AInputEvent;
+
 int32_t onInputEvent(android_app* papp, AInputEvent* event);
 void onAppCmd(android_app* app, int32_t cmd);
 
