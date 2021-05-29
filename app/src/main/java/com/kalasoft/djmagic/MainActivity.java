@@ -3,9 +3,13 @@ package com.kalasoft.djmagic;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.NativeActivity;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.view.View;
+
+import java.io.InputStream;
 
 public class MainActivity extends NativeActivity {
 
@@ -17,6 +21,22 @@ public class MainActivity extends NativeActivity {
     }
 
 
+    Bitmap importImageFromAssets(String fileName)
+    {
+        Bitmap bitmap=null;
+        try
+        {
+            InputStream is=getAssets().open(fileName);
+            bitmap= BitmapFactory.decodeStream(is);//////checked if scaled to density;
+
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return bitmap;
+
+    }
 
     float[] getDisplayParams()
     {

@@ -9,6 +9,8 @@
 #include <android_native_app_glue.h>
 #include "jni.h"
 #include "Commons.h"
+
+class ImageView;
 class DisplayMetrics;
 //struct android_app;
 
@@ -28,7 +30,7 @@ public:
     }
     static status getDisplayMetrics(DisplayMetrics *displayMetrics);
     static status hideSystemUI();
-
+    static status setImageViewTexture(ImageView *imageView, const char *assetLoc);
 };
 
 

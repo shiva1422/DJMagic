@@ -11,5 +11,6 @@
 
 enum status{STATUS_OK,STATUS_KO,STATUS_EXTRA,STATUS_KO_FATAL};
 typedef int32_t int32;
+typedef uint8_t uint8;
 
 #endif //DHWANI_AUDIOSTUDIO_COMMONS_H

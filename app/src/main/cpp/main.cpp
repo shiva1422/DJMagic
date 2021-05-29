@@ -9,6 +9,7 @@
 #include "Context.h"
 #include "Graphics.h"
 #include "View.h"
+#include "ImageView.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -27,7 +28,8 @@ void android_main(struct android_app* app)
 //initialize displayMetric hear and let Context have only pointer;
     initialSetup(app);
     DisplayMetrics *displayMetrics=&Context::displayMetrics;
-    View view(displayMetrics->screenWidth/4,displayMetrics->screenHeight/2,displayMetrics->screenWidth/2,displayMetrics->screenHeight/2);
+    ImageView view(displayMetrics->screenWidth*(10/100),displayMetrics->screenHeight/2,displayMetrics->screenWidth/2,displayMetrics->screenHeight/2);
+    view.setTexture("icons/test.png");
 
 
 

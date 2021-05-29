@@ -15,7 +15,7 @@ protected:
     static float vertices[8];
     static GLuint vertexBufId;
     static GLuint indexBufId;
-    static GLuint texCoodBufId;
+    static GLuint uvBufId;
 
 public:
     static DisplayMetrics *disMet;//private?

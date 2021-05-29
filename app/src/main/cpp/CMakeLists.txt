@@ -5,7 +5,7 @@ find_library(log-lib log)
 set(CMAKE_SHARED_LINKER_FLAGS  "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate")
 
 add_library(main SHARED main.cpp AndroidEvents.cpp Context.cpp JavaCall.cpp Graphics.cpp Commons.h)
-add_library(ui STATIC View.cpp)
+add_library(ui STATIC View.cpp ImageView.cpp)
 target_include_directories(ui PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
 
 
@@ -30,4 +30,4 @@ set_target_properties(swresample PROPERTIES IMPORTED_LOCATION "${FFMPEG_DIR}/lib
 ###FFMPEG
 
 
-target_link_libraries(main ui avformat avutil avcodec swresample android  glue GLESv3 EGL ${log-lib})
+target_link_libraries(main ui avformat avutil avcodec swresample android  glue jnigraphics GLESv3 EGL ${log-lib})

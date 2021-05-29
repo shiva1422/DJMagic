@@ -154,12 +154,9 @@ bool Shader::getSource(const char *fileName)
         else
             return false;
     }
-
-    else
-    {
-        Loge("Shader::getSournce","shader source could not be loaded check location %s",fileName);
+    Loge("Shader::getSournce","shader source could not be loaded check location %s",fileName);
         return false;
-    }
+
 }
 status Graphics::onAppReopen(Context *appContext)
 {

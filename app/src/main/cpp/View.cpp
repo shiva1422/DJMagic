@@ -8,7 +8,7 @@
 
 GLuint View::vertexBufId=0;
 GLuint View::indexBufId=0;
-GLuint View::texCoodBufId=0;
+GLuint View::uvBufId=0;
 float View::vertices[]={-1.0f,-1.0f,1.0f,-1.0f,1.0f,1.0f,-1.0f,1.0f};
 DisplayMetrics* View::disMet =nullptr;
 
@@ -50,7 +50,7 @@ void View::initializeUI()
 
     GLuint bufferIds[3];
     glGenBuffers(3,bufferIds);
-    View::indexBufId=bufferIds[0],View::texCoodBufId=bufferIds[1],View::vertexBufId=bufferIds[2];
+    View::indexBufId=bufferIds[0], View::uvBufId=bufferIds[1], View::vertexBufId=bufferIds[2];
     //for(int i=0;i<3;i++)UILogE("%d, vertexBufId %d",bufferIds[i],vertexBufId);
 
     glBindBuffer(GL_ARRAY_BUFFER,View::vertexBufId);
@@ -67,7 +67,7 @@ void View::initializeUI()
     glUnmapBuffer(GL_ARRAY_BUFFER);//return GL_false if error
 
 
-    glBindBuffer(GL_ARRAY_BUFFER,View::texCoodBufId);
+    glBindBuffer(GL_ARRAY_BUFFER,View::uvBufId);
     glBufferData(GL_ARRAY_BUFFER,sizeof(float)*8,(void *)0,GL_STATIC_DRAW);
     float *textCoords=(float *)glMapBufferRange(GL_ARRAY_BUFFER,0,sizeof(float)*8,GL_MAP_WRITE_BIT);
     if(textCoords)
