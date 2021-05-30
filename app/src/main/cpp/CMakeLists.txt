@@ -4,16 +4,16 @@ target_include_directories(glue PUBLIC ${ANDROID_NDK}/sources/android/native_app
 find_library(log-lib log)
 set(CMAKE_SHARED_LINKER_FLAGS  "${CMAKE_SHARED_LINKER_FLAGS} -u ANativeActivity_onCreate")
 
-add_library(main SHARED main.cpp AndroidEvents.cpp Context.cpp JavaCall.cpp Graphics.cpp Commons.h)
-add_library(ui STATIC View.cpp ImageView.cpp)
-target_include_directories(ui PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
+##Oboe
+set(OBOE E:/androidlibs/oboe)
+add_subdirectory(${OBOE} ./oboe)
+
 
 
 
 
 ##FFMpeg
 set(FFMPEG_DIR E:/Android/mainprojects/FFMpeg/ffmpegandroid/build/${CMAKE_ANDROID_ARCH_ABI})
-target_include_directories(main PUBLIC ${FFMPEG_DIR}/include)
 
 add_library(avformat SHARED IMPORTED)
 set_target_properties(avformat PROPERTIES IMPORTED_LOCATION "${FFMPEG_DIR}/lib/libavformat.so")
@@ -30,4 +30,19 @@ set_target_properties(swresample PROPERTIES IMPORTED_LOCATION "${FFMPEG_DIR}/lib
 ###FFMPEG
 
 
-target_link_libraries(main ui avformat avutil avcodec swresample android  glue jnigraphics GLESv3 EGL ${log-lib})
+
+
+
+add_library(main SHARED main.cpp AndroidEvents.cpp Context.cpp JavaCall.cpp Graphics.cpp Commons.h FileManager)
+target_include_directories(main PUBLIC ${FFMPEG_DIR}/include ${OBOE}/include)
+add_library(ui STATIC View.cpp ImageView.cpp)
+target_include_directories(ui PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include)
+
+add_library(audio STATIC AudioTrack.cpp AudioCodec.cpp AudioPlayer.cpp)
+target_include_directories(audio PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include ${FFMPEG_DIR}/include)
+
+
+
+
+
+target_link_libraries(main ui  audio oboe  avformat avutil avcodec swresample android  glue jnigraphics GLESv3 EGL ${log-lib})
