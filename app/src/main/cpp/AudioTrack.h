@@ -24,6 +24,7 @@ public:
     AudioTrack();
     ~AudioTrack();
     AudioTrack(short numChannels,AudioFormat audioFormat,short sampleRate);
+    void submit(void *bufferData,int buffSize);//test
 
 };
 

@@ -8,3 +8,5 @@
 //teluskossdfsd
 prefab
 Class::create;
+//Tomorrow //play audio and atleast 1 frame on UI;(sample formats and time syncing)
+//Divide MediaPlayer to Audio and Video player.

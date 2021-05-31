@@ -41,8 +41,13 @@ AudioTrack::AudioTrack(short numChannels, AudioFormat audioFormat, short sampleR
 
 
 }
+void AudioTrack::submit(void *bufferData, int numFrames)
+{
+    stream->write(bufferData,numFrames,1000);//timeout in nano secs;
+}
 /*
  * Methods to add audio track
+ * Cofigure methode instead of in constructor;
  * setContent type
  * setAudioFormat
  * setSharingMode;

@@ -38,7 +38,7 @@ target_include_directories(main PUBLIC ${FFMPEG_DIR}/include ${OBOE}/include)
 add_library(ui STATIC View.cpp ImageView.cpp)
 target_include_directories(ui PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include)
 
-add_library(audio STATIC AudioTrack.cpp AudioCodec.cpp AudioPlayer.cpp)
+add_library(audio STATIC AudioTrack.cpp MediaCodec.cpp MediaPlayer.cpp)
 target_include_directories(audio PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include ${FFMPEG_DIR}/include)
 
 

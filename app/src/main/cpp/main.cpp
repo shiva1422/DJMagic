@@ -11,9 +11,9 @@
 #include "View.h"
 #include "ImageView.h"
 #include "AudioTrack.h"
-#include "AudioCodec.h"
+#include "MediaCodec.h"
 #include "FileManager.h"
-#include "AudioPlayer.h"
+#include "MediaPlayer.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -23,9 +23,9 @@ void initialSetup(android_app *app);
 void android_main(struct android_app* app)
 {
     Logi("FFMpeg"," avcodec configuration %s",avcodec_configuration());
-    AudioCodec::findCodec();
+    MediaCodec::findCodec();
 
-    AudioCodec::showAvailable();
+    MediaCodec::showAvailableCodecs();
 
     app->onAppCmd=AndroidEvents::onAppCmd;
     app->onInputEvent=AndroidEvents::onInputEvent;
@@ -37,7 +37,7 @@ void android_main(struct android_app* app)
     DisplayMetrics *displayMetrics=&Context::displayMetrics;
     ImageView view(displayMetrics->screenWidth*(10/100),displayMetrics->screenHeight/2,displayMetrics->screenWidth/2,displayMetrics->screenHeight/2);
     view.setTexture("icons/test.png");
-    AudioPlayer audioPlayer;
+    MediaPlayer audioPlayer;
     audioPlayer.setAudioFileFromAssets("audio/okeoka.mp3");
 
 
