@@ -60,8 +60,8 @@ void ImageView::setTexture(Bitmap *image)
 void ImageView::draw()
 {
     //View::draw();//backGround
-    glEnable(GL_BLEND);//check needed wholly(keep globlally enable ) correspond with disable.
-    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+   // glEnable(GL_BLEND);//check needed wholly(keep globlally enable ) correspond with disable.
+   // glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
@@ -75,7 +75,7 @@ void ImageView::draw()
     glBindBuffer(GL_ARRAY_BUFFER,uvBufId);
     glVertexAttribPointer(2,2,GL_FLOAT,GL_FLOAT,0,(void *)0);
 
-    glActiveTexture(GL_TEXTURE0);
+   // glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D,texId);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,indexBufId);

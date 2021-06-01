@@ -14,11 +14,11 @@
 #include "MediaCodec.h"
 #include "FileManager.h"
 #include "MediaPlayer.h"
-
+#include "VideoView.h"
+#include "Time.h"
 extern "C" {
 #include <libavformat/avformat.h>
 }
-
 void initialSetup(android_app *app);
 void android_main(struct android_app* app)
 {
@@ -37,31 +37,40 @@ void android_main(struct android_app* app)
     DisplayMetrics *displayMetrics=&Context::displayMetrics;
     ImageView view(displayMetrics->screenWidth*(10/100),displayMetrics->screenHeight/2,displayMetrics->screenWidth/2,displayMetrics->screenHeight/2);
     view.setTexture("icons/test.png");
-    MediaPlayer audioPlayer;
-    audioPlayer.setAudioFileFromAssets("audio/okeoka.mp3");
-
-
-
-
-
-
-
+    MediaPlayer mediaPlayer;
+    mediaPlayer.openFileAndFindFormat("video/test.mp4");
+    Bitmap imageParams=mediaPlayer.getImageParams();
+    VideoView videoView(imageParams.width,imageParams.height,1);
+    videoView.setBounds(100,100,1000,500);
 
     int32_t eventId,events,fdesc;
     android_poll_source* source;
+    TimeDiff frameTime;
    do
     {
         while((eventId=ALooper_pollAll(0,&fdesc,&events,(void **) &source))>=0)
-       {
-           if(source!=NULL)
-           {
-               source->process(app,source);
-           }
-       }
-        glClearColor(1.0,0.0,0.0,1.0);
+        {
+            if (source != NULL)
+            {
+                source->process(app, source);
+
+            }
+            break;
+
+        }
+        frameTime.start();
+        glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
+
+
+        videoView.updateFrame(mediaPlayer.getFrame(videoView.getBuf(), imageParams));
+        // usleep(1000);
+
         view.draw();
-        eglSwapBuffers(context.eglDisplay,context.eglSurface);
+        videoView.draw();
+       // Graphics::printGlError("Video View");
+        eglSwapBuffers(context.eglDisplay, context.eglSurface);
+        frameTime.end();
 
     }while(app->destroyRequested==0);
 }

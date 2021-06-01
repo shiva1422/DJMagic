@@ -7,7 +7,7 @@
 
 class FileManager{
 public:
-    static int getFileDescriptor(const char* assetLoc);
+    static AAsset * getFileDescriptor(const char* assetLoc);
 };
 
 #endif //DJMAGIC_FILEMANAGER_H

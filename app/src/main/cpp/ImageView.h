@@ -10,7 +10,7 @@
 #include "Bitmap.h"
 
 class ImageView : public View{
-private:
+protected:
     GLuint texId=0,texBufId=0;
     int32 bitmapHeight=0,bitmapWidth=0,bitmapStride=0;
 public:

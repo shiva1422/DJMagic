@@ -10,3 +10,9 @@ prefab
 Class::create;
 //Tomorrow //play audio and atleast 1 frame on UI;(sample formats and time syncing)
 //Divide MediaPlayer to Audio and Video player.
+
+PPMFILe,Planes
+
+ERRS:
+could not find codec params for some (files) stream unspecified px format; - increased probesize(set before open input) and analyzie duration(put before find stream info). but
+//possiblities ,options , manualy set ,AV_probe_input format,avio_reading.c in doc check.
