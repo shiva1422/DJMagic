@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.kalasoft.djmagic">
+    package="com.kalasoft.djmagic" android:installLocation="auto">
 
     <application
         android:allowBackup="true"
@@ -10,6 +10,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DjMagic">
         <activity android:name=".MainActivity"
+            android:configChanges="orientation"
+            android:screenOrientation="sensorPortrait"
                    >
 
             <meta-data

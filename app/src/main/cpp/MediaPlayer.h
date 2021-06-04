@@ -20,12 +20,14 @@ extern "C"
 #include "AudioTrack.h"
 #include "MediaCodec.h"
 #include "Bitmap.h"
+#include "string"
 
 #define INBUF_SIZE 4096
 #define AUDIO_INBUF_SIZE 20480
 #define AUDIO_REFILL_THRESH 4096
 #define FF_INPUT_BUFFER_PADDING_SIZE 64
 
+class VideoView;
 class MediaPlayer {
 private:
 
@@ -48,34 +50,49 @@ private:
     size_t bufSize , avioContextBufSize = 4096;
 
     //Codec
-    AVIOContext *ioContext=NULL;
-    const AVCodec *aDecoder= NULL,*vDecoder=NULL;
-    AVCodecContext *aDecodeContext=NULL,*vDecodeContext=NULL;
-    AVStream *vStream=NULL,*aStream=NULL;
-    AVFrame  *frame=NULL, *videoFrame=NULL;
+    AVIOContext *ioContext = NULL;
+    const AVCodec *aDecoder = NULL,*vDecoder = NULL;
+    AVCodecContext *aDecodeContext = NULL,*vDecodeContext = NULL;
+    AVStream *vStream = NULL,*aStream = NULL;
+    AVFrame  *frame = NULL, *videoFrame = NULL;
     AVPacket *packet;
    // SwsContext *sws;for scaling color conversions.
    //Player
    uint8 inbuf[AUDIO_INBUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE];//paddng size - to compensate for sometimes read over the end
 
+   //Threading && OutPut
+   friend class VideoView;
+   VideoView *outputView = nullptr;
+   pthread_t thread;
+   pthread_attr_t *threadAttribs;
+   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//destroy all thread using this done;
+   pthread_cond_t frameSignalCond = PTHREAD_COND_INITIALIZER;
+   static void *threadFunc(void *mediaPlayer);
+
+
+    status openFileAndFindStreamInfo();
     status findStreamsAndOpenCodecs();
-    int openCodecsFromFormat(int *streamIndex,AVMediaType type);
+    status start();
     void playAudio();
     void playVideo();
 
+    void setError(const char *error);
+
 
 public:
+    std::string errorString;
     MediaPlayer();
     ~MediaPlayer();
-    status openFileAndFindFormat(const char* audioFileLoc);
     void configureCodec();
     void configureTrack();
     void play();
     void pause();
+    status setFile(const char* fileLoc);
     void decodeAudio(AVPacket *packet,AVFrame *frame);
     void clearResources();
     Bitmap getImageParams(); //later can be used based on image format;just gives image params not p
     bool getFrame(void *dest, Bitmap bitmapParams);
+
     /*
      * meths
      *confiure codecs,

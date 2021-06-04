@@ -15,7 +15,7 @@ extern "C"
 };
 //move below to class?
 #define AUDIO_INBUF_SIZE 20480
-#define AUDIO_REFILL_THRESHOLD=4096;
+#define AUDIO_REFILL_THRESHOLD 4096;
 class MediaCodecInfo{
 public:
     const char *name= nullptr,*mediaType= nullptr;

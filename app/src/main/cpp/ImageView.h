@@ -11,11 +11,12 @@
 
 class ImageView : public View{
 protected:
+
     GLuint texId=0,texBufId=0;
     int32 bitmapHeight=0,bitmapWidth=0,bitmapStride=0;
 public:
     ImageView();
-    ImageView(int32 startX,int32 startY,int32 width,int32 height);
+    ImageView(float startX, float startY, float width, float height);
     void setTexture(Bitmap *image);
     void setTexture(const char *assetLoc);
     virtual void draw() override;

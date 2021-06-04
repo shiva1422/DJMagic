@@ -7,7 +7,10 @@
 
 ImageView::ImageView() {}
 
-ImageView::ImageView(int32 startX, int32 startY, int32 width, int32 height) : View(startX,startY,width,height){}
+ImageView::ImageView(float startX,float startY,float width,float height): View(startX,startY,width,height)
+{
+    //
+}
 
 void ImageView::setTexture(const char *assetLoc)
 {

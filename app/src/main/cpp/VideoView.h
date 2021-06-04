@@ -8,14 +8,26 @@
 
 #include "ImageView.h"
 
+class MediaPlayer;
 class VideoView : public ImageView{
 private:
     int numFrames=0;
-public:
-    VideoView();
-    VideoView(int imageWidth, int imageHeight, int numFrames);
+    uint8 *buf=nullptr;
+    bool frameRequired=true;
+    bool textureUpdateRequired=true,drawRequired=true;
+    MediaPlayer* mediaPlayer= nullptr;
+    void onFrameAvailable(void *buf);
     void *getBuf();
 
+    void onFrameRequired();
+
+public:
+    friend class MediaPlayer;
+    VideoView();
+    VideoView(int imageWidth, int imageHeight, int numFrames);
+    virtual void draw() override;
+    void setTexture(int imageWidth,int  imageHeight);
+    void setFile(const char* assetLoc);
     void updateFrame(bool bUpdateTexture);
 };
 

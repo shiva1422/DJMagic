@@ -5,6 +5,7 @@
 #include <android/asset_manager.h>
 #include "MediaPlayer.h"
 #include "FileManager.h"
+#include "VideoView.h"
 #define MediaLogE(...)((void)__android_log_print(ANDROID_LOG_ERROR,"MEDIA_LOG:",__VA_ARGS__))
 #define MediaLogI(...)((void)__android_log_print(ANDROID_LOG_INFO,"MEDIA_LOG:",__VA_ARGS__))
 
@@ -60,6 +61,7 @@ static void avDumpFormatCallback(void *ptr,int level,const char *fmt,va_list v1)
 }
 MediaPlayer::MediaPlayer()
 {
+    //MediaLogI("the header version LIBAVFORMAT_VERSION is %d and libversion is %s",avformat_version());
     av_log_set_level(32);//do globally and static for av_dump_format with below;
     av_log_set_callback(avDumpFormatCallback);
 
@@ -72,83 +74,70 @@ MediaPlayer::~MediaPlayer()
     delete audioTrack;
     audioCodec= nullptr;
 }
-status MediaPlayer::openFileAndFindFormat(const char *audioFileLoc)//Demuxing
+void MediaPlayer::setError(const char *error)
 {
-    //any failure close resources put flags
-    fileName=audioFileLoc;
-    asset=FileManager::getFileDescriptor(audioFileLoc);//can also use FILE *;
+    this->errorString += error;
+    MediaLogE("%s",error);
+}
+status MediaPlayer::setFile(const char *fileLoc)
+{
+    fileName=fileLoc;
+    asset= FileManager::getAsset(fileLoc);
     if(!asset)
     {
-        MediaLogE("couldnot open asset");
+       setError("could't open Asset");
+       return STATUS_KO_FATAL;
+    }
+
+    uint8 *vidBuf=(uint8 *)av_malloc(VIDEO_BUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE);//move to header
+
+
+    //based on type of files set ioContext now for asset;
+    ioContext = avio_alloc_context(vidBuf ,VIDEO_BUF_SIZE,0,(void *)asset,readPacket,NULL,kseek);
+    if(!ioContext)
+    {
+        //close AAset ,clear vid buffer
+        setError("IOContext alloc failed");
         return STATUS_KO_FATAL;
     }
 
-    uint8 *vidBuf=(uint8 *)av_malloc(VIDEO_BUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE);
-
-    ioContext = avio_alloc_context( vidBuf ,VIDEO_BUF_SIZE , 0 ,(void *)asset,readPacket,NULL,kseek);
-
-    KIOContext context;
-    context.size  = 4096;
-    context.asset = asset;
-    context.ptr   = (uint8 *) av_malloc(context.size);//destroy
-    //can se write ,seek functions;
-    context.kioContext = avio_alloc_context(context.ptr,context.size, 0,(void *) &context,readPacket, NULL, NULL);
+    return openFileAndFindStreamInfo();
 
 
-
-
-
+}
+status MediaPlayer::openFileAndFindStreamInfo()//Demuxing
+{
     formatContext = avformat_alloc_context();
+    if(!formatContext)
+    {
+        //cllose ioContext;
+        setError("FormatContext alloc failed");
+        return STATUS_KO_FATAL;
+    }
     formatContext->pb=ioContext;
-  //  formatContext->iformat=av_probe_input_format(&probeData,1);
+    //must be closed;
+    //formatContext->iformat=av_probe_input_format(&probeData,1);
     formatContext->flags=AVFMT_FLAG_CUSTOM_IO;
 
-
-    //open the file and get info about streams to formatContet,demuxer info//need no clear here for every later just do in the firs t function if return statusfatal;
     if(avformat_open_input(&formatContext, "",NULL,NULL) < 0)
     {
-        MediaLogE("check");
-        //close fd and file
-        MediaLogE("openFIle Failed","could not find format,check otherways or cleanup");//
-        clearResources();//need not for everyy check just do outside if returned fatal;
+        //clear formatContex;
+        setError("OpenInput failed");
         return STATUS_KO_FATAL;
     }
+    //check right time for below two
     formatContext->max_analyze_duration=INT64_MAX;
     formatContext->max_ts_probe=INT32_MAX;
     if(avformat_find_stream_info(formatContext,NULL) < 0)
     {
         //fill fmt context->nb streams if the openinput function could not recoginze some streams without headers
-        MediaLogE("openFile","cannot find stream info ,checkOther Ways?probly not");
-        clearResources();
+        setError("Find Stream Info Failed");
         return STATUS_KO_FATAL;
     }
-    formatContext->max_probe_packets=INT32_MAX;
-
     totNumStreams=formatContext->nb_streams;
-    MediaLogE("openfile totalStreams %d", totNumStreams);
-  //  MediaLogI("the header version LIBAVFORMAT_VERSION is %d and libversion is %s",avformat_version());
-    findStreamsAndOpenCodecs();
     av_dump_format(formatContext, ANDROID_LOG_INFO, "", 0);//index?
+    return findStreamsAndOpenCodecs();
 
-    //open codecs for all  streams for now only one for each audio and video
-   /* if(openCodecsFromFormat(&videoStrInd,AVMEDIA_TYPE_VIDEO) >= 0)//else?
-    {//video codec opened success
-        vStream=formatContext->streams[videoStrInd];//can be moved to openCode
-
-        //allocate image where the decoded image will be put from decodeContext struct details//
-        MediaLogI("Video Format pictureWidth-%d and height%d and bitRate-%ld",vDecodeContext->width,vDecodeContext->height,vDecodeContext->max_b_frames);
-
-    }
-    if(openCodecsFromFormat(&audioStrInd,AVMEDIA_TYPE_AUDIO) >=0)//else?
-    {//audioCodec opended success
-        aStream=formatContext->streams[audioStrInd];
-        MediaLogI("AudioContext -sampleRate %d and bitRate %d and ,bperRawSample -%d",aDecodeContext->sample_rate,aDecodeContext->bit_rate,aDecodeContext->bits_per_raw_sample);
-    }*/
-   // playAudio();
-   playVideo();
-
-
-    return STATUS_OK;
 }
 status MediaPlayer::findStreamsAndOpenCodecs()
 {
@@ -281,11 +270,10 @@ status MediaPlayer::findStreamsAndOpenCodecs()
 }
 void MediaPlayer::playVideo()
 {
-    AVCodecParserContext *parser = av_parser_init(vDecodeContext->codec_id);
-    if(!parser)
-    {
-        MediaLogE("parserNot found");
-    }
+
+    videoFrame=av_frame_alloc();//free
+    if(!videoFrame)
+        return;
     packet=av_packet_alloc();
 
     packet->size=0;
@@ -294,9 +282,7 @@ void MediaPlayer::playVideo()
     {
         return;
     }
-    videoFrame=av_frame_alloc();//free
-    if(!videoFrame)
-        return;
+
     int res=0;
 
   //  res=av_read_frame(formatContext,packet);
@@ -359,6 +345,7 @@ void MediaPlayer::playVideo()
 
 
 }
+
 Bitmap MediaPlayer::getImageParams()
 {
    Bitmap bitmap;
@@ -366,6 +353,123 @@ Bitmap MediaPlayer::getImageParams()
    bitmap.width=vDecodeContext->width;
    Logi("getPar","the width of pic is %d and height is %d",bitmap.height,bitmap.width);
     return bitmap;
+}
+void* MediaPlayer::threadFunc(void *mediaPlayer)
+{
+
+    MediaPlayer *player=static_cast<MediaPlayer *>(mediaPlayer);//if !mediaPlayer Exit;
+    int res=-1,decodeRes=0;
+    while(av_read_frame(player->formatContext,player->packet) >= 0)
+    {
+        //decode audio and video are same byt change in decode_context
+        MediaLogE("decoding thread");
+        if(player->packet->stream_index == player->videoStrInd)
+        {
+            //decode video
+            res = avcodec_send_packet(player->vDecodeContext,player->packet);
+            if(res<0)
+            {
+                std::string  err="Decoding : Error submit packet " + std::string(av_err2str(res));
+                player->setError(err.c_str());
+                break;
+            }
+
+            //get all the available frames from the decoder
+
+            while(decodeRes >= 0)
+            {
+                decodeRes = avcodec_receive_frame(player->vDecodeContext , player->videoFrame);
+                if(decodeRes < 0)
+                {
+                    MediaLogE("The Frame is not available");
+                    if(decodeRes == AVERROR_EOF || decodeRes == AVERROR(EAGAIN))
+                    {
+                        //no Errors also no frame output available
+                        decodeRes = 0;
+                        break;
+                    }
+                    //else player will break
+                    player->setError((std::string("Error during decoding ") + std::string(av_err2str(res))).c_str());
+                    break;
+
+                }
+
+                //write frame data to destination;based on type of codec context audio or video;
+                //player->outputView->updateFromDecoded();
+
+                pthread_mutex_lock(&player->mutex);
+                pthread_cond_wait(&player->frameSignalCond,&player->mutex);
+
+                while(!player->outputView->frameRequired)
+                {
+                    pthread_cond_wait(&player->frameSignalCond,&player->mutex);
+
+                }
+                pthread_mutex_unlock(&player->mutex);
+
+                uint8 *out=(uint8 *) player->outputView->buf;
+
+                if(out)
+                {
+                    for(int x = 0;x <player->videoFrame->width;++x)
+                    {
+                        for(int y=0 ; y < player->videoFrame->height ; ++y)
+                        {
+                            // MediaLogE("the width adn height %d and %d",videoFrame->width,videoFrame->height);
+                            out[y * player->videoFrame->width * 4 + x * 4 ]     = player->videoFrame->data[0][ y * player->videoFrame->linesize[0] + x];
+                            out[y * player->videoFrame->width * 4 + x * 4 + 1 ] = player->videoFrame->data[0][ y * player->videoFrame->linesize[0] + x];
+                            out[y * player->videoFrame->width * 4 + x * 4 + 2]  = 255;//player->videoFrame->data[0][ y * player->videoFrame->linesize[0] + x];
+                            out[y * player->videoFrame->width * 4 + x * 4 + 3]  = 255;
+                        }
+                    }
+                }
+
+                out= nullptr;
+
+                pthread_mutex_lock(&player->mutex);
+                player->outputView->frameRequired=false;
+                player->outputView->textureUpdateRequired=true;
+                pthread_mutex_unlock(&player->mutex);
+
+
+
+                av_frame_unref(player->videoFrame);
+
+
+
+            }
+
+        }
+        else if(player->packet->stream_index == player->audioStrInd)
+        {
+            //decode audio same as video
+        }
+        av_packet_unref(player->packet);
+        if(decodeRes < 0)
+            break;
+    }
+    //av_read_frame()the returned packet is valid until the next av_read_frame() or until av_close_input_file() and must be freed with av_free_packet
+
+
+}
+status MediaPlayer::start()
+{
+    videoFrame=av_frame_alloc();//free
+    if(!videoFrame)
+        return STATUS_KO_FATAL;
+    packet=av_packet_alloc();
+    if(!packet)
+    {
+        return STATUS_KO_FATAL;
+    }
+
+    packet->size=0;
+    packet->data=NULL;
+
+    if(pthread_create(&thread,NULL,threadFunc,(void *)this) != 0)
+        return STATUS_KO;
+    return STATUS_OK;
+
 }
 bool MediaPlayer::getFrame(void *dest, Bitmap bitmapParams)
 {
@@ -388,8 +492,6 @@ bool MediaPlayer::getFrame(void *dest, Bitmap bitmapParams)
         {
             av_packet_unref(packet);
             return false;
-
-
         }
 
 
@@ -402,7 +504,7 @@ bool MediaPlayer::getFrame(void *dest, Bitmap bitmapParams)
         //got single frame just break loop and display single image for now;
 
 
-    MediaLogE("update frame","success");
+ //   MediaLogE("update frame","success");
     uint8 *out=(uint8 *)dest;
 
 
@@ -418,7 +520,7 @@ bool MediaPlayer::getFrame(void *dest, Bitmap bitmapParams)
        }
    }
    static int frameCount=0;
-    Logi("update frame","success %d",frameCount++);
+  //  Logi("update frame","success %d",frameCount++);
     return true;
 }
 
@@ -534,6 +636,8 @@ void MediaPlayer::clearResources()
     avcodec_close(vDecodeContext);
     avcodec_close(aDecodeContext);
     avformat_close_input(&formatContext);
+    avformat_free_context(formatContext);
+    av_free(ioContext);
 
     //free contexts ,packet,
 }

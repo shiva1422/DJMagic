@@ -17,6 +17,7 @@
 #endif
 
 class DisplayMetrics;
+class View;
 
 class Context {
 private:
@@ -31,6 +32,11 @@ public:
     EGLDisplay eglDisplay=EGL_NO_DISPLAY;
     EGLSurface eglSurface=EGL_NO_SURFACE;
     EGLContext eglContext=EGL_NO_CONTEXT;
+
+    View *contentView = nullptr;
+
+    Context();
+
     static void setApp(android_app *app)
     {
         Context::app=app;

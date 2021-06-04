@@ -14,14 +14,16 @@ DisplayMetrics* View::disMet =nullptr;
 
 View::View() {}
 
-View::View(int startX, int startY, int width, int height)
+View::View(float startX, float startY, float width, float height)
 {
+
     setBounds(startX,startY,width,height);
 }
-kforceinline void View::setBounds(int startX, int startY, int width, int height)
+void View::setBounds(float startX, float startY, float width, float height)
 {
-    scaleX = float(width)/float(disMet->screenWidth);
-    scaleY = float(height)/float(disMet->screenHeight);
+    this->startX=startX,this->startY=startY,this->width=width,this->height=height;//only for now may be not
+    scaleX = width/(disMet->screenWidth);
+    scaleY = height/(disMet->screenHeight);
     translateX = ( (startX+width/2.0)- disMet->screenWidth/2.0 )* 2.0/ disMet->screenWidth;
     translateY = ( -(startY+height/2.0) + disMet->screenHeight/2.0 ) *2.0 / disMet->screenHeight;
 }
@@ -43,7 +45,22 @@ void View ::draw()
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
 
 }
+bool View::onDispatchTouch(float touchX, float touchY, int pointerId, TouchAction touchAction)
+{
+    //later based on translate ,scale ,rotation.
+    if(touchX>=startX && touchX <= (startX + width) && touchY >= startY && touchY <= (startY + height) )// macro
+    {
+        Logi("Dispathc Touch :","i'm touched ");
+        if(touchListener)
+        {
+           return touchListener->onTouch(touchX,touchY,pointerId,touchAction,this);
+        }
 
+    }
+    else //remove
+    Logi("Dispathc Touch :","i'm not touched");
+    return false;
+}
 void View::initializeUI()
 {
     //improve anything fails return statusKo and assert;

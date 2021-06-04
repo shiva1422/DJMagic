@@ -11,7 +11,7 @@
 #include "Context.h"
 #include "android/log.h"
 
-AAsset * FileManager::getFileDescriptor(const char *assetLoc)
+AAsset * FileManager::getAsset(const char *assetLoc)
 {
 
     AAssetManager *assetManager = Context::getApp()->activity->assetManager;

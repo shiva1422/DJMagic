@@ -25,7 +25,7 @@ void android_main(struct android_app* app)
     Logi("FFMpeg"," avcodec configuration %s",avcodec_configuration());
     MediaCodec::findCodec();
 
-    MediaCodec::showAvailableCodecs();
+  //  MediaCodec::showAvailableCodecs();
 
     app->onAppCmd=AndroidEvents::onAppCmd;
     app->onInputEvent=AndroidEvents::onInputEvent;
@@ -37,11 +37,13 @@ void android_main(struct android_app* app)
     DisplayMetrics *displayMetrics=&Context::displayMetrics;
     ImageView view(displayMetrics->screenWidth*(10/100),displayMetrics->screenHeight/2,displayMetrics->screenWidth/2,displayMetrics->screenHeight/2);
     view.setTexture("icons/test.png");
-    MediaPlayer mediaPlayer;
-    mediaPlayer.openFileAndFindFormat("video/test.mp4");
-    Bitmap imageParams=mediaPlayer.getImageParams();
-    VideoView videoView(imageParams.width,imageParams.height,1);
+    context.contentView=&view;
+
+   // Bitmap imageParams=mediaPlayer.getImageParams();
+   // VideoView videoView(imageParams.width,imageParams.height,1);
+    VideoView videoView;
     videoView.setBounds(100,100,1000,500);
+    videoView.setFile("video/test.mp4");
 
     int32_t eventId,events,fdesc;
     android_poll_source* source;
@@ -63,7 +65,7 @@ void android_main(struct android_app* app)
         glClear(GL_COLOR_BUFFER_BIT);
 
 
-        videoView.updateFrame(mediaPlayer.getFrame(videoView.getBuf(), imageParams));
+      //  videoView.updateFrame(mediaPlayer.getFrame(videoView.getBuf(), imageParams));
         // usleep(1000);
 
         view.draw();
