@@ -21,7 +21,7 @@ extern "C"
 #include "MediaCodec.h"
 #include "Bitmap.h"
 #include "string"
-
+#include "Codec.h"
 #define INBUF_SIZE 4096
 #define AUDIO_INBUF_SIZE 20480
 #define AUDIO_REFILL_THRESH 4096
@@ -48,6 +48,7 @@ private:
     AVIOContext *avioContext = NULL;
     uint8 *buffer = NULL, *avioContextBuf = NULL;
     size_t bufSize , avioContextBufSize = 4096;
+    AVRational sampleAspectRatio;
 
     //Codec
     AVIOContext *ioContext = NULL;
@@ -59,24 +60,56 @@ private:
    // SwsContext *sws;for scaling color conversions.
    //Player
    uint8 inbuf[AUDIO_INBUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE];//paddng size - to compensate for sometimes read over the end
+   //time and state
+   int frameDrop = -1;
+
+
+    Codec audDec,vidDec,subDec;
+
+    Clock audClock,vidClock,extClock;
+
+    FrameQueue picFQ,subPicFQ,sampleFQ;
+
+    PacketQueue audPktQ,vidPktQ,subPktQ;
+
+
+    int initFrameAndPacketQsClocks();
+    status initAndstartCodecs();
+    //Audio
+
 
    //Threading && OutPut
    friend class VideoView;
    VideoView *outputView = nullptr;
+   bool vidFrameReady=false;
+   double ptsSecs=0.0;
    pthread_t thread;
    pthread_attr_t *threadAttribs;
-   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//destroy all thread using this done;
-   pthread_cond_t frameSignalCond = PTHREAD_COND_INITIALIZER;
-   static void *threadFunc(void *mediaPlayer);
+   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER,mutReadWait = PTHREAD_MUTEX_INITIALIZER;//destroy all thread using this done;
+   pthread_cond_t condContReadThread = PTHREAD_COND_INITIALIZER;
+   static void *readThread(void *mediaPlayer);
+   void printFrameInfo(AVCodecContext* codecContext , AVFrame* frame);
 
+    //control
+    bool isStarted = false;//till first frame
+    bool isEnded = false;//after lastFrame;
 
     status openFileAndFindStreamInfo();
     status findStreamsAndOpenCodecs();
     status start();
     void playAudio();
     void playVideo();
+    int  receiveFrame(MediaPlayer *player);
+    bool fillOutput(MediaPlayer *player, uint8* out);
 
     void setError(const char *error);
+    static void *videoThread(void *mediaPlayer);
+    static void *audioThread(MediaPlayer *player);
+    static void *subtitleThread(MediaPlayer *player);
+    int getVideoFrame(AVFrame *frame);
+    int queuePicture(AVFrame *srcFrame , double pts , double duration ,int64 pos, int serial);
+    int decoderDecodeFrame(Codec *codec , AVFrame *frame ,AVSubtitle *sub);
+
 
 
 public:
@@ -92,6 +125,7 @@ public:
     void clearResources();
     Bitmap getImageParams(); //later can be used based on image format;just gives image params not p
     bool getFrame(void *dest, Bitmap bitmapParams);
+
 
     /*
      * meths

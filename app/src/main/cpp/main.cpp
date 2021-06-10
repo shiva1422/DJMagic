@@ -16,6 +16,8 @@
 #include "MediaPlayer.h"
 #include "VideoView.h"
 #include "Time.h"
+#include "Player.h"
+
 extern "C" {
 #include <libavformat/avformat.h>
 }
@@ -39,12 +41,12 @@ void android_main(struct android_app* app)
     view.setTexture("icons/test.png");
     context.contentView=&view;
 
-   // Bitmap imageParams=mediaPlayer.getImageParams();
-   // VideoView videoView(imageParams.width,imageParams.height,1);
-    VideoView videoView;
-    videoView.setBounds(100,100,1000,500);
-    videoView.setFile("video/test.mp4");
-
+   //Bitmap imageParams=mediaPlayer.getImageParams();
+  // VideoView videoView(imageParams.width,imageParams.height,1);
+   VideoView videoView;
+   videoView.setBounds(100,100,1000,500);
+   videoView.setFile("video/test.mp4");
+   // Player player("video/test.mp4");
     int32_t eventId,events,fdesc;
     android_poll_source* source;
     TimeDiff frameTime;
@@ -76,7 +78,7 @@ void android_main(struct android_app* app)
 
     }while(app->destroyRequested==0);
 }
-void initialSetup(android_app *app)
+void initialSetup(android_app *app)//move to context::init;
 {
 
 

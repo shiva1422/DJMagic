@@ -35,10 +35,10 @@ set_target_properties(swresample PROPERTIES IMPORTED_LOCATION "${FFMPEG_DIR}/lib
 
 add_library(main SHARED main.cpp AndroidEvents.cpp Context.cpp JavaCall.cpp Graphics.cpp Commons.h FileManager)
 target_include_directories(main PUBLIC ${FFMPEG_DIR}/include ${OBOE}/include)
-add_library(ui STATIC View.cpp ImageView.cpp VideoView.cpp ViewGroup.cpp)
+add_library(ui STATIC View.cpp ImageView.cpp VideoView.cpp ViewGroup.cpp Texture.cpp)
 target_include_directories(ui PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include ${FFMPEG_DIR}/include ${OBOE}/include)
 
-add_library(audio STATIC AudioTrack.cpp MediaCodec.cpp MediaPlayer.cpp)
+add_library(audio STATIC AudioTrack.cpp MediaCodec.cpp Codec.cpp Player.cpp MediaPlayer.cpp)
 target_include_directories(audio PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue ${OBOE}/include ${FFMPEG_DIR}/include)
 
 

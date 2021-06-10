@@ -9,44 +9,22 @@ VideoView::VideoView() {}
 
 VideoView::VideoView(int imageWidth, int imageHeight, int numFrames)
 {
-    setTexture(imageWidth,imageHeight);
+    setTexture(imageWidth,imageHeight,numFrames);
+    this->numFrames = numFrames;
 }
-void VideoView::setTexture(int imageWidth, int imageHeight)
+void VideoView::setTexture(int imageWidth, int imageHeight,int numFrames)
 {
-
-    bitmapHeight=imageHeight;
-    bitmapWidth=imageWidth;
     // bitmapStride=image->stride;//check for gettting from ffmpeg
+    bitmapWidth =imageWidth,bitmapHeight=imageHeight;
 
-    if(glIsBuffer(texBufId))
-        glDeleteBuffers(1,&texBufId);
-    glGenBuffers(1,&texBufId);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER,texBufId);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER,bitmapWidth*bitmapHeight*4,(void *)0,GL_DYNAMIC_DRAW);///pixels!=Null,check stride
-    if(Graphics::printGlError("ImageView::setTexture")==GL_OUT_OF_MEMORY)//prompt
+    for(int i=0;i<numFrames;i++)
     {
-        return;
+        textures.push_back(Texture::createTexture(imageWidth,imageHeight));
     }
 
 
-    if(glIsTexture(texId))
-        glDeleteTextures(1,&texId);
-    glGenTextures(1,&texId);
-    glBindTexture(GL_TEXTURE_2D,texId);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, bitmapWidth,bitmapHeight);//glTexImage,Mutabletexture
-    glTexSubImage2D(GL_TEXTURE_2D,0,0,0,bitmapWidth,bitmapHeight,GL_RGBA,GL_UNSIGNED_BYTE,0);
-
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);
-    glBindTexture(GL_TEXTURE_2D,0);
-
-    if(Graphics::printGlError("ImageView::setTexture")==GL_NO_ERROR)
-    {
-        Logi("ImageView::setTexture","success %d ,%d",bitmapWidth,bitmapHeight);
-    }
+    texId=textures[0].tex;//active for drawing;//check texture size is not zero;
+    texBufId=textures[0].buf;
     return;
 }
 void VideoView::setFile(const char *assetLoc)
@@ -56,78 +34,104 @@ void VideoView::setFile(const char *assetLoc)
     mediaPlayer->outputView=this;
     Bitmap bitmapParams=mediaPlayer->getImageParams();
     Logi("setFile video","height is %d and width is %d",bitmapParams.width,bitmapParams.height);
-    setTexture(bitmapParams.width,bitmapParams.height);
+    setTexture(bitmapParams.width,bitmapParams.height,2);
     mediaPlayer->start();
 
 }
 void VideoView::draw()
 {
-    if(mediaPlayer)
+     Logi("VIdeo View :","draw");
+     static bool filling = false,swapReq = false,draw = false;
+
+         if(pthread_mutex_lock(&mediaPlayer->mutex) == 0)
+         {
+             if(texUpdate)
+             {
+                 buf = nullptr;
+                 texUpdate = false;
+                 textures[1].unmapBuf();
+                 Texture::swapTextures(textures[0],textures[1]);
+                 filling = false;
+
+             }
+             if(!filling)
+             {
+                 buf =textures[1].mapBuf();
+                 filling = true;
+                 pthread_cond_signal(&mediaPlayer->condContReadThread);
+
+             }
+
+             // while(!texUpdate)
+              //   pthread_cond_wait(&mediaPlayer->condContReadThread,&mediaPlayer->mutex);
+
+             pthread_mutex_unlock(&mediaPlayer->mutex);
+         }
+
+
+       /* if(pthread_mutex_trylock(&mediaPlayer->mutex) == 0)
+        {
+            if(texUpdate && filling)
+            {
+                buf = nullptr;
+                texUpdate = false;
+                textures[1].unmapBuf();
+                filling =false;
+            }
+            pthread_mutex_unlock(&mediaPlayer->mutex);
+        }*/
+
+
+
+
+
+
+    if(true)
     {
-        pthread_mutex_lock(&mediaPlayer->mutex);
-
-        if(textureUpdateRequired)
-            drawRequired=true;
-
-        pthread_mutex_unlock(&mediaPlayer->mutex);
-    }
-
-
-    if(drawRequired)
-    {
-        updateFrame(true);
-        buf= nullptr;
+       // texId = texToDraw->tex;
+       // texBufId = texToDraw->buf;
+       texId = textures[0].tex;
+       texBufId = textures[0].buf;
         ImageView::draw();
-        onFrameRequired();
-       // drawRequired=false;
     }
 
-    Logi("VIdeo View :","draw");
+
 }
-void VideoView::onFrameRequired()
+kforceinline void VideoView::checkUpdate()
 {
+    static int updateInd=0,preUpdateInd=1;
+    static bool updated=false;
+    pthread_mutex_lock(&mediaPlayer->mutex);
+
+    if(frameRequired && updateInd!=preUpdateInd && updated)
+    {
+       // Logi("req frame","true");
+        pthread_cond_signal(&mediaPlayer->condContReadThread);
+
+        buf = textures[updateInd].mapBuf();
+
+            Logi("req frame","true");
+            pthread_cond_signal(&mediaPlayer->condContReadThread);
+            preUpdateInd=updateInd;
+            updateInd++;
+            if(updateInd>1)
+                updateInd=0;
+            updated=false;
+
+    }
+    pthread_mutex_unlock(&mediaPlayer->mutex);
 
     pthread_mutex_lock(&mediaPlayer->mutex);
-    buf=(uint8 *)getBuf();
-    Logi("FrameRequrired","update");
-    frameRequired=true;
-    textureUpdateRequired=false;
-    pthread_cond_signal(&mediaPlayer->frameSignalCond);
+    if(texUpdate)
+    {
+      textures[preUpdateInd].unmapBuf();
+      texToDraw = &textures[preUpdateInd];
+      buf = nullptr;
+      texUpdate=false;
+      updated=true;
+
+
+    }
     pthread_mutex_unlock(&mediaPlayer->mutex);
-}
-void* VideoView::getBuf()
-{   //should be followed by update frame before any other glMaps;
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER,texBufId);
-    void *mem = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER,0,bitmapHeight*bitmapWidth*sizeof(int32),GL_MAP_WRITE_BIT|GL_MAP_WRITE_BIT);
-    if(mem)
-    {
-
-      // Logi("Videobuf","BufferMap success");
-       memset(mem,0,bitmapWidth*bitmapWidth);
-    }
-    //should be followd by unmap
-    return mem;
-}
-
-void VideoView::updateFrame(bool bUpdateTexture)
-{
-
-    glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-    if(bUpdateTexture)
-    {
-        glBindTexture(GL_TEXTURE_2D,texId);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER,texBufId);
-        glTexSubImage2D(GL_TEXTURE_2D,0,0,0,bitmapWidth,bitmapHeight,GL_RGBA,GL_UNSIGNED_BYTE,0);
-      //  Graphics::printGlError("Video View");
-        glBindTexture(GL_TEXTURE_2D,0);
-
-    }
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);
-
-}
-
-void VideoView::onFrameAvailable(void *buf)
-{
-
 
 }

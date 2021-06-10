@@ -25,7 +25,7 @@ public:
     {
         clock_gettime(CLOCKTYPE,&endTime);
     }
-    void getTimeDiff()
+    double getTimeDiff()
     {
         if(endTime.tv_nsec < startTime.tv_nsec)
         {
@@ -45,7 +45,9 @@ public:
         Loge("TImeDiff",",Time taken:","%.10lf secs ",timeDiff.tv_sec+timeDiff.tv_nsec/1000000000.0);
         endTime={.tv_sec=0,.tv_nsec=0};
         startTime={.tv_sec=0,.tv_nsec=0};
+        return (timeDiff.tv_sec + timeDiff.tv_nsec / 1000000000.0);
     }
+
 
 
 };

@@ -11,8 +11,37 @@ Class::create;
 //Tomorrow //play audio and atleast 1 frame on UI;(sample formats and time syncing)
 //Divide MediaPlayer to Audio and Video player.
 
-PPMFILe,Planes
+PPMFILe,Planes,interlaced,pmts,
 
 ERRS:
 could not find codec params for some (files) stream unspecified px format; - increased probesize(set before open input) and analyzie duration(put before find stream info). but
 //possiblities ,options , manualy set ,AV_probe_input format,avio_reading.c in doc check.
+
+
+NOTES:
+
+frameTime(pts_time) = timeBase * pts;//pts is increasing number factored in timebase that is a rational num(where denominatore is known as timecaled) divisible by the frame rate.
+for eg fps = 60/1 and timebase = 1/60000 each pts will increase (timescale/fps)=1000
+
+fps =stream->avg_frame_rate;
+tbr=stream->r_frame_time;
+tbn=stream->time_base
+
+
+ffplay
+strean_open - 3078;
+frameq - inits - 691;
+pktq-inits -479;
+clocks - 1375
+readThread-2755
+decoder init -578;,start 2121;
+decoderdecode frame -= 591;
+videoTHrad -2131
+getVidFrame - 1775;
+
+//order;
+
+VidState;
+readThread;
+stream_component open;2572
+decoderinit,start;,audio vidoe susb threads
