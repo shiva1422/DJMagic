@@ -61,7 +61,11 @@ private:
    //Player
    uint8 inbuf[AUDIO_INBUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE];//paddng size - to compensate for sometimes read over the end
    //time and state
-   int frameDrop = -1;
+   int frameDrop = -1,frameDropsEarly = 0,frameDropsLate = 0 ;double frameLastFilterDelay = 0.0;//check if ==0
+   int decoderReorderPts = -1;//check -1
+   int avSyncType = AV_SYNC_AUDIO_MASTER;
+   int getMasterSyncType();//to clock
+   double getMasterClock();//to clock current master ClockValue
 
 
     Codec audDec,vidDec,subDec;
@@ -75,6 +79,8 @@ private:
 
     int initFrameAndPacketQsClocks();
     status initAndstartCodecs();
+    int packetQget(PacketQueue *packetQueue, AVPacket *packet,int block ,int *serial);//to packetQ
+    int packetQPutPrivate(PacketQueue *packetQueue,AVPacket *packet);
     //Audio
 
 
@@ -108,7 +114,10 @@ private:
     static void *subtitleThread(MediaPlayer *player);
     int getVideoFrame(AVFrame *frame);
     int queuePicture(AVFrame *srcFrame , double pts , double duration ,int64 pos, int serial);
-    int decoderDecodeFrame(Codec *codec , AVFrame *frame ,AVSubtitle *sub);
+    int decoderDecodeFrame(Codec *codec , AVFrame *frame ,AVSubtitle *sub);//to codec
+    Frame* frameQueuePeekReadable(FrameQueue *f);//to frame
+    Frame* frameQueuePeekWritable(FrameQueue *f);//to frame
+
 
 
 

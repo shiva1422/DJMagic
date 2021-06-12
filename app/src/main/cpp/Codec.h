@@ -38,6 +38,8 @@ extern "C"
 /* NOTE: the size must be big enough to compensate the hardware audio buffersize size */
 /* TOD: We assume that a decoded and resampled frame fits into this buffer */
 #define SAMPLE_ARRAY_SIZE (8 * 65536)
+#define AV_NOSYNC_THRESHOLD 10.0
+
 
 enum {
     AV_SYNC_AUDIO_MASTER, /* default choice */
@@ -61,8 +63,8 @@ class PacketQueue{
     int64 duration;
     int abortReq;
     int serial;
-    pthread_cond_t  cond;
-    pthread_mutex_t mutex;
+    pthread_cond_t * cond;
+    pthread_mutex_t *mutex;/////init
 public:
     friend class Player;
     friend class MediaPlayer;
@@ -92,6 +94,7 @@ public:
     void init(int *qSerial);
     void setClock(double pts, int serial);
     void setClockAt(double pts,int serial,double time);
+    double getValue();
 };
 /* Common struct for handling all types of decoded data and allocated render buffers. */
 class Frame{
@@ -107,8 +110,11 @@ class Frame{
     AVRational sar;
     int uploaded;
     int flipV;
+
 public:
+
     friend class Player;
+    friend class MediaPlayer;
     friend class FrameQueue;
 };
 class FrameQueue{
@@ -119,12 +125,15 @@ class FrameQueue{
     int maxSize;
     int keepLast;
     int rindexShown;
-    pthread_mutex_t  mutex;
-    pthread_cond_t  cond;
+    pthread_mutex_t*  mutex;////////init
+    pthread_cond_t* cond;
     PacketQueue *packetQueue;
+
 public:
+    void push();
     int init(PacketQueue *pq,int maxSize,int keepLast);
     friend class Player;
+    friend class MediaPlayer;
 };
 class Codec {
 private:

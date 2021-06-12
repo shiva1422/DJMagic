@@ -9,12 +9,12 @@ int FrameQueue::init(PacketQueue *pq, int maxSize, int keepLast)
 {
     //can be init in class itself or can move to constructor;
     memset(this, 0 ,sizeof(FrameQueue));
-    if(pthread_mutex_init(&mutex,NULL))
+    if(pthread_mutex_init(mutex,NULL))
     {
         Loge("FrameQ init","could not create mutex %s",strerror(errno));
         return -1;
     }
-    if(pthread_cond_init(&cond,NULL))
+    if(pthread_cond_init(cond,NULL))
     {
         Loge("FrameQ init","could not create conditional %s",strerror(errno));
         return -1;
@@ -33,6 +33,15 @@ int FrameQueue::init(PacketQueue *pq, int maxSize, int keepLast)
     }
     return 0;
 }
+void FrameQueue::push()
+{
+    if(++windex == maxSize)
+        windex = 0;
+    pthread_mutex_lock(mutex);
+    size++;
+    pthread_cond_signal(cond);
+    pthread_mutex_unlock(mutex);
+}
 int PacketQueue ::init()
 {
     memset(this,0,sizeof(PacketQueue));
@@ -42,12 +51,12 @@ int PacketQueue ::init()
         Loge("PacketQ:init","mem error1");
         return AVERROR(ENOMEM);
     }
-    if(pthread_mutex_init(&mutex,NULL))
+    if(pthread_mutex_init(mutex,NULL))
     {
         Loge("initpackets","could not create mutex %s",strerror(errno));
         return -1;
     }
-    if(pthread_cond_init(&cond,NULL)!=0)
+    if(pthread_cond_init(cond,NULL)!=0)
     {
         Loge("initpackets","could not create cond %s",strerror(errno));
         return -1;
@@ -74,6 +83,19 @@ void Clock::setClockAt(double pts, int serial, double time)
     lastUpdated = time;
     ptsDrift = this->pts - time;
     this->serial = serial;
+}
+double Clock::getValue()
+{
+    if(*queueSerial != serial)
+        return NAN;
+    if(paused)
+        return pts;
+    else
+    {
+        double time = av_gettime_relative()/1000000.0;
+        return ptsDrift + time - (time - lastUpdated) * (1.0 - speed);
+    }
+
 }
 int Codec::init(AVCodecContext *codecContext, PacketQueue *packetQueue,pthread_cond_t *emptyQueueCond)
 {

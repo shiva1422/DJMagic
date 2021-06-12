@@ -38,6 +38,9 @@ decoder init -578;,start 2121;
 decoderdecode frame -= 591;
 videoTHrad -2131
 getVidFrame - 1775;
+MasterClocks sync - 1423;
+QueuePicture 1744;
+VideoRefresh 1575;
 
 //order;
 

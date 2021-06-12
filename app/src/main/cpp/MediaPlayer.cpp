@@ -598,6 +598,7 @@ void *MediaPlayer ::videoThread(void *mediaPlayer)
 
     theEnd:
     av_frame_free(&frame);
+    return 0;
 }
 int MediaPlayer::getVideoFrame(AVFrame *frame)
 {
@@ -612,16 +613,243 @@ int MediaPlayer::getVideoFrame(AVFrame *frame)
             dpts =av_q2d(vStream->time_base) * frame->pts;
         frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(formatContext,vStream,frame);
 
-        if(frameDrop > 0 || (frameDrop && ))
+        if(frameDrop > 0 || (frameDrop && getMasterSyncType() != AV_SYNC_VIDEO_MASTER))
+        {
+            if(frame->pts != AV_NOPTS_VALUE)
+            {
+                double diff = dpts - getMasterClock();
+                if(!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD && (diff - frameLastFilterDelay) < 0 && vidDec.packetSerial == vidClock.serial && vidPktQ.numPackets)
+                {
+                    frameDropsEarly++;
+                    av_frame_unref(frame);
+                    gotPicture = 0;
+                }
+            }
+        }
     }
+    return gotPicture;
 }
-int MediaPlayer::decoderDecodeFrame(Codec *codec, AVFrame *frame, AVSubtitle *sub)
+int MediaPlayer::getMasterSyncType()
+{
+    if(avSyncType == AV_SYNC_VIDEO_MASTER)
+    {
+        if(vStream)
+            return AV_SYNC_VIDEO_MASTER;
+        else
+            return AV_SYNC_AUDIO_MASTER;
+    }
+    else if(avSyncType == AV_SYNC_AUDIO_MASTER)
+    {
+        if(aStream)
+            return AV_SYNC_AUDIO_MASTER;
+        else return AV_SYNC_EXTERNAL_CLOCK;
+    }
+    else
+        return AV_SYNC_VIDEO_MASTER;
+}
+double MediaPlayer::getMasterClock()
+{
+    double val;
+
+    switch(getMasterSyncType())
+    {
+        case AV_SYNC_VIDEO_MASTER:
+            val = vidClock.getValue();
+                    break;
+        case AV_SYNC_AUDIO_MASTER:
+            val = audClock.getValue();
+            break;
+        default:
+            val = extClock.getValue();
+    }
+    return val;
+}
+int MediaPlayer::decoderDecodeFrame(Codec *dec, AVFrame *frame, AVSubtitle *sub)
+{
+    int res = AVERROR(EAGAIN);
+    while(true)
+    {
+        if(dec->packetQueue->serial == dec->packetSerial)
+        {
+            do{
+                if(dec->packetQueue->abortReq)
+                    return -1;
+
+                switch(dec->codecContext->codec_type)//Now only Video
+                {
+                    case AVMEDIA_TYPE_VIDEO:
+                        res = avcodec_receive_frame(dec->codecContext,frame);
+                        if(res >= 0)
+                        {
+                            if(decoderReorderPts == -1)
+                            {
+                                frame->pts = frame->best_effort_timestamp;
+                            }
+                            else if(!decoderReorderPts)
+                            {
+                                frame->pts = frame->pkt_dts;
+                            }
+                        }
+
+                        break;
+                        //OtherCases;
+                }
+                if(res == AVERROR_EOF)
+                {
+                    dec->finished = dec->packetSerial;
+                    avcodec_flush_buffers(dec->codecContext);
+                    return 0;
+                }
+                if(res >= 0)
+                    return 1;
+
+            }while(res != AVERROR(EAGAIN));
+        }
+
+
+        do{
+            if(dec->packetQueue->numPackets == 0)
+                pthread_cond_signal(dec->condEmptyQ);
+                if(dec->packetPending)
+                    dec->packetPending = 0;
+
+                else
+                {
+                    int oldSerial = dec->packetSerial;
+                    if(packetQget(dec->packetQueue,dec->packet,1,&dec->packetSerial)<0)
+                        return -1;
+                    if(oldSerial != dec->packetSerial)
+                    {
+                        avcodec_flush_buffers(dec->codecContext);
+                        dec->finished = 0;
+                        dec->nextPts = dec->startPts;
+                        dec->nextPtsTB =dec->startPtsTB;
+                    }
+
+                }
+                if(dec->packetQueue->serial ==dec->packetSerial)
+                    break;
+                av_packet_unref(dec->packet);
+            }while(true);
+
+        if(dec->codecContext->codec_type == AVMEDIA_TYPE_SUBTITLE)
+        {
+            int gotFrame = 0;
+            res =avcodec_decode_subtitle2(dec->codecContext ,sub,&gotFrame,dec->packet);
+            if(res < 0)
+            {
+                res = AVERROR(EAGAIN);
+            }
+            else
+            {
+                if(gotFrame && !dec->packet->data)
+                {
+                    dec->packetPending = 1;
+                }
+                res =gotFrame ? 0 :(dec->packet->data ? AVERROR(EAGAIN) : AVERROR_EOF);
+            }
+            av_packet_unref(dec->packet);
+        }
+        else
+        {
+            if(avcodec_send_packet(dec->codecContext,dec->packet) == AVERROR(EAGAIN))
+            {
+                MediaLogE("Decoder decode frame : revieveFrame and sendpacket both returned EAGAIN , which is an API violation;");//check src av_log;
+                dec->packetPending = 1;
+            }
+            else
+            {
+                av_packet_unref(dec->packet);
+            }
+        }
+    }
+    return res;//not in src
+}
+int MediaPlayer::packetQget(PacketQueue *packetQueue, AVPacket *packet,int block ,int *serial)
+{
+    MyAVPacketList pkt;
+    int res;
+    pthread_mutex_lock(packetQueue->mutex);
+    while(true)
+    {
+        if(packetQueue->abortReq)
+        {
+            res = -1;
+            break;
+        }
+        if(av_fifo_size(packetQueue->packetList) >= sizeof(pkt))
+        {
+            av_fifo_generic_read(packetQueue->packetList,&pkt,sizeof(pkt),NULL);
+            packetQueue->numPackets --;
+            packetQueue->size -= pkt.pkt->size + sizeof(pkt);
+            packetQueue->duration -= pkt.pkt->duration;
+            av_packet_move_ref(packet,pkt.pkt);
+            if(serial)
+                *serial = pkt.serial;
+            av_packet_free(&pkt.pkt);
+            res = 1;
+            break;
+        }
+        else if(!block)
+        {
+            res = 0;
+            break;
+        }
+        else
+        {
+            pthread_cond_wait(packetQueue->cond,packetQueue->mutex);
+        }
+    }
+
+    pthread_mutex_unlock(packetQueue->mutex);
+    return res;
+
+}
+
+int MediaPlayer::packetQPutPrivate(PacketQueue *packetQueue, AVPacket *packet)
 {
 
 }
 int MediaPlayer::queuePicture(AVFrame *srcFrame, double pts, double duration, int64 pos,int serial)
 {
+    Frame *vp;
+    #ifndef NDEBUG
+    MediaLogI(" FrameType = %c  ,pts = %0.3f",av_get_picture_type_char(srcFrame->pict_type),pts);//print frameInfo;
+    #endif
 
+    if(!(vp = frameQueuePeekWritable(&picFQ)))
+        return -1;
+    vp->sar = srcFrame->sample_aspect_ratio;
+    vp->uploaded =0;
+    vp->width = srcFrame->width;
+    vp->height =srcFrame->height;
+    vp->format = srcFrame->format;
+
+    vp->pts = pts;
+    vp->duration = duration;
+    vp->pos = pos;
+    vp->serial = serial;
+    //setDefaultWindowSize(vp->width,vp->height,vp->sar);
+
+    av_frame_move_ref(vp->frame,srcFrame);
+    picFQ.push();
+    return 0;
+
+
+}
+Frame* MediaPlayer::frameQueuePeekWritable(FrameQueue *f)
+{
+    //Move into FrameQueue;
+    //wait until there is space to put a new Frame;
+    pthread_mutex_lock(f->mutex);
+    while(f->size >= f->maxSize && !f->packetQueue->abortReq)
+    {
+        pthread_cond_wait(f->cond,f->mutex);
+    }
+    pthread_mutex_unlock(f->mutex);
+    if(f->packetQueue->abortReq)
+        return NULL;
+    return &f->frameQueue[f->windex];
 }
 void MediaPlayer::clearResources()
 {
