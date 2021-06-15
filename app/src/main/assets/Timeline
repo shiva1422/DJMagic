@@ -9,7 +9,8 @@
 prefab
 Class::create;
 //Tomorrow //play audio and atleast 1 frame on UI;(sample formats and time syncing)
-//Divide MediaPlayer to Audio and Video player.
+//Divide MediaPlayer to Audio and Video player
+condSignal();.
 
 PPMFILe,Planes,interlaced,pmts,
 
@@ -40,11 +41,13 @@ videoTHrad -2131
 getVidFrame - 1775;
 MasterClocks sync - 1423;
 QueuePicture 1744;
-VideoRefresh 1575;
-
+VideoRefresh 1575;video open - 1337 ,video display - 1361,videoRefresh -1575 video imagedisplay 975;refresh loop wait event 3234
+streamhasenough packet - 2731
 //order;
 
 VidState;
 readThread;
 stream_component open;2572
-decoderinit,start;,audio vidoe susb threads
+decoderinit,
+decoder start => packetQstart-;
+,audio vidoe susb threads

@@ -32,10 +32,11 @@ void VideoView::setFile(const char *assetLoc)
     mediaPlayer = new MediaPlayer;
     mediaPlayer->setFile(assetLoc);
     mediaPlayer->outputView=this;
-    Bitmap bitmapParams=mediaPlayer->getImageParams();
-    Logi("setFile video","height is %d and width is %d",bitmapParams.width,bitmapParams.height);
-    setTexture(bitmapParams.width,bitmapParams.height,2);
-    mediaPlayer->start();
+    //uncomment all accordingly;
+   // Bitmap bitmapParams=mediaPlayer->getImageParams();
+   // Logi("setFile video","height is %d and width is %d",bitmapParams.width,bitmapParams.height);
+   // setTexture(bitmapParams.width,bitmapParams.height,2);
+   // mediaPlayer->start();
 
 }
 void VideoView::draw()

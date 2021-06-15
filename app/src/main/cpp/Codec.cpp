@@ -9,20 +9,20 @@ int FrameQueue::init(PacketQueue *pq, int maxSize, int keepLast)
 {
     //can be init in class itself or can move to constructor;
     memset(this, 0 ,sizeof(FrameQueue));
-    if(pthread_mutex_init(mutex,NULL))
+    if(pthread_mutex_init(&mutex,NULL))
     {
         Loge("FrameQ init","could not create mutex %s",strerror(errno));
         return -1;
     }
-    if(pthread_cond_init(cond,NULL))
+    if(pthread_cond_init(&cond,NULL))
     {
         Loge("FrameQ init","could not create conditional %s",strerror(errno));
         return -1;
     }
 
     packetQueue = pq;
-    maxSize = FFMIN(maxSize,FRAME_QUEUE_SIZE);
-    keepLast = !!keepLast;//?
+    this->maxSize = FFMIN(maxSize,FRAME_QUEUE_SIZE);
+    this->keepLast = !!keepLast;//?
     for(int i=0 ; i<this->maxSize; ++i)
     {
         if(!(frameQueue[i].frame = av_frame_alloc()))
@@ -37,10 +37,10 @@ void FrameQueue::push()
 {
     if(++windex == maxSize)
         windex = 0;
-    pthread_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     size++;
-    pthread_cond_signal(cond);
-    pthread_mutex_unlock(mutex);
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
 }
 int PacketQueue ::init()
 {
@@ -51,12 +51,12 @@ int PacketQueue ::init()
         Loge("PacketQ:init","mem error1");
         return AVERROR(ENOMEM);
     }
-    if(pthread_mutex_init(mutex,NULL))
+    if(pthread_mutex_init(&mutex,NULL))
     {
         Loge("initpackets","could not create mutex %s",strerror(errno));
         return -1;
     }
-    if(pthread_cond_init(cond,NULL)!=0)
+    if(pthread_cond_init(&cond,NULL)!=0)
     {
         Loge("initpackets","could not create cond %s",strerror(errno));
         return -1;
@@ -111,4 +111,95 @@ int Codec::init(AVCodecContext *codecContext, PacketQueue *packetQueue,pthread_c
     startPts = AV_NOPTS_VALUE;
     packetSerial = -1;
     return 0;
+}
+int Codec::start(void *(*fn)(void *), MediaPlayer *player)
+{
+    packetQueue->start();
+    if(pthread_create(&thrId,NULL,fn,player))
+    {
+        Loge("CodecStart:","Could not create thread");
+        return -1;//NOMEM
+    }
+    return 0;
+}
+
+void PacketQueue::start()
+{
+    pthread_mutex_lock(&mutex);//check succ
+    abortReq = 0;
+    serial++;
+    pthread_mutex_unlock(&mutex);
+}
+void PacketQueue::flush()
+{
+    MyAVPacketList pkt1;
+    pthread_mutex_lock(&mutex);
+
+    while(av_fifo_size(packetList) >= sizeof(pkt1))
+    {
+        av_fifo_generic_read(packetList,&pkt1,sizeof(pkt1),NULL);
+        av_packet_free(&pkt1.pkt);
+    }
+    numPackets = 0;
+    size = 0;
+    duration = 0;
+    serial++;
+
+    pthread_mutex_unlock(&mutex);
+}
+int PacketQueue::put(AVPacket *pkt)
+{
+    AVPacket *pkt1;
+    int ret;
+
+    pkt1 = av_packet_alloc();
+    if(!pkt1)
+    {
+        av_packet_unref(pkt);
+        return -1;
+    }
+    av_packet_move_ref(pkt1, pkt);
+
+    pthread_mutex_lock(&mutex);
+    ret = putPrivate(pkt1);
+    pthread_mutex_unlock(&mutex);
+    if(ret < 0)
+        av_packet_free(&pkt1);
+
+    return ret;
+}
+int PacketQueue::putPrivate(AVPacket *pkt)
+{
+    MyAVPacketList pkt1;
+
+    if(abortReq)
+        return -1;
+
+    if(av_fifo_space(packetList) < sizeof(pkt1))
+    {
+        if(av_fifo_grow(packetList , sizeof(pkt1)) < 0)
+            return -1;
+    }
+
+    pkt1.pkt = pkt;
+    pkt1.serial = serial;
+
+    av_fifo_generic_write(packetList , &pkt1 ,sizeof(pkt1),NULL);
+    numPackets++;
+    size += pkt1.pkt->size + sizeof(pkt1);
+    duration += pkt1.pkt->duration;
+    //should duplicate packet data in DV case 445
+
+    pthread_cond_signal(&cond); //init?
+
+    return 0;
+}
+int PacketQueue::putNullPacket(AVPacket *pkt, int streamInd)
+{
+    pkt->stream_index = streamInd;
+    return put(pkt);
+}
+int PacketQueue::hasEnoughtPackets(AVStream *stream, int streadId)
+{
+    return streadId < 0 || abortReq || (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) || numPackets>MIN_FRAMES && (!duration || av_q2d(stream->time_base) * duration > 1.0);
 }

@@ -34,7 +34,6 @@ private:
     int fd=-1;
 
     bool bPlaying=false,bAudioInit=false,bVideoInit=true;
-    const char *fileName=nullptr;
     AudioTrack *audioTrack= nullptr;
     MediaCodec *audioCodec= nullptr;
     int videoFrameCount=0,audioFrameCount=0;
@@ -44,46 +43,71 @@ private:
     int audioStrInd=-1;//(type from above);
     int videoStrInd=-1;//later  multiple streams
     AAsset *asset=nullptr;
-    AVFormatContext *formatContext=NULL;
-    AVIOContext *avioContext = NULL;
     uint8 *buffer = NULL, *avioContextBuf = NULL;
     size_t bufSize , avioContextBufSize = 4096;
     AVRational sampleAspectRatio;
+    //New
+    std::string fileName;
+    uint8 *inputBuf = nullptr;
+    bool bPlayerInit = false;
+    const AVInputFormat *inFormat = nullptr;//need init before open format contex
+    AVIOContext *avioContext = NULL;
 
+    AVFormatContext *formatContext=nullptr;
+
+    //MasterRead THread;
+    AVPacket *pkt =NULL;
+
+    //Picture Props:
+     int width = 0,height =0,xleft =0,ytop=0;
     //Codec
     AVIOContext *ioContext = NULL;
     const AVCodec *aDecoder = NULL,*vDecoder = NULL;
     AVCodecContext *aDecodeContext = NULL,*vDecodeContext = NULL;
     AVStream *vStream = NULL,*aStream = NULL;
     AVFrame  *frame = NULL, *videoFrame = NULL;
-    AVPacket *packet;
    // SwsContext *sws;for scaling color conversions.
    //Player
-   uint8 inbuf[AUDIO_INBUF_SIZE + FF_INPUT_BUFFER_PADDING_SIZE];//paddng size - to compensate for sometimes read over the end
-   //time and state
-   int frameDrop = -1,frameDropsEarly = 0,frameDropsLate = 0 ;double frameLastFilterDelay = 0.0;//check if ==0
-   int decoderReorderPts = -1;//check -1
-   int avSyncType = AV_SYNC_AUDIO_MASTER;
-   int getMasterSyncType();//to clock
-   double getMasterClock();//to clock current master ClockValue
+
 
 
     Codec audDec,vidDec,subDec;
 
-    Clock audClock,vidClock,extClock;
+
 
     FrameQueue picFQ,subPicFQ,sampleFQ;
 
     PacketQueue audPktQ,vidPktQ,subPktQ;
+    //Aud
+    bool muted = false;
+
+    //time and state
+    int eof = 0 , abortRequest = 0 ,realTime;//abortReq check;
+    int audClockSer = -1;
+    int queueAttachmentsReq = 0,infiniteBuf =0 ,paused = 0,lastPaused = 0,readPauseReturn;//bool?
+    //seek
+    int seekReq = 0,seekFlags = 0 , step = 0;//seek flag change based on type seek
+    int64 seekPos,seekRel;
+    int frameDrop = -1,frameDropsEarly = 0,frameDropsLate = 0 ;//check if ==0
+    int64 startTime = AV_NOPTS_VALUE,duration = AV_NOPTS_VALUE;//check relevance;in startReading; may be for  loop start_time is for inital seek 2847
+    int decoderReorderPts = -1;//check -1
+    int avSyncType = AV_SYNC_AUDIO_MASTER;
+    double maxFrameDuration; //above this ,we consider the jump a timestamp discountinuity;
+    double frameTimer = 0.0,frameLastReturnedTime =0.0,frameLastFilterDelay = 0.0;//check init
+    bool vidDisable = true,audDisable = true ,subDisable = true;
+    Clock audClock,vidClock,extClock;
+
+    int getMasterSyncType();//to clock
+    double getMasterClock();//to clock current master ClockValue
 
 
-    int initFrameAndPacketQsClocks();
-    status initAndstartCodecs();
     int packetQget(PacketQueue *packetQueue, AVPacket *packet,int block ,int *serial);//to packetQ
     int packetQPutPrivate(PacketQueue *packetQueue,AVPacket *packet);
     //Audio
 
+    //streamInds
 
+     int vidStr = -1,audStr = -1 ,subStr = -1,lastVidStr = -1,lastAudStr = -1,lastSubStr = -1;
    //Threading && OutPut
    friend class VideoView;
    VideoView *outputView = nullptr;
@@ -91,18 +115,26 @@ private:
    double ptsSecs=0.0;
    pthread_t thread;
    pthread_attr_t *threadAttribs;
-   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER,mutReadWait = PTHREAD_MUTEX_INITIALIZER;//destroy all thread using this done;
-   pthread_cond_t condContReadThread = PTHREAD_COND_INITIALIZER;
-   static void *readThread(void *mediaPlayer);
+   pthread_t readThr;
+   pthread_cond_t condContReadThread ;
+   pthread_mutex_t mutWait,mutex = PTHREAD_MUTEX_INITIALIZER,mutReadWait = PTHREAD_MUTEX_INITIALIZER;//destroy all thread using this done;
    void printFrameInfo(AVCodecContext* codecContext , AVFrame* frame);
 
     //control
     bool isStarted = false;//till first frame
     bool isEnded = false;//after lastFrame;
 
-    status openFileAndFindStreamInfo();
-    status findStreamsAndOpenCodecs();
-    status start();
+    //New
+    status initFrameAndPacketQsClocks();
+    status openInputFindStreamInfo();
+    status openStreamsAndCodecs();
+    status initAndStartCodecs();
+    int startReading();
+    void stepToNextFrame();
+    void streamTogglePause();
+
+
+
     void playAudio();
     void playVideo();
     int  receiveFrame(MediaPlayer *player);
@@ -117,6 +149,8 @@ private:
     int decoderDecodeFrame(Codec *codec , AVFrame *frame ,AVSubtitle *sub);//to codec
     Frame* frameQueuePeekReadable(FrameQueue *f);//to frame
     Frame* frameQueuePeekWritable(FrameQueue *f);//to frame
+    static void* masterReadThread(void *mediaPlayer);
+    static int decodeInterruptCallBack(void *ctx);
 
 
 
@@ -129,6 +163,7 @@ public:
     void configureTrack();
     void play();
     void pause();
+   // friend class Codec;
     status setFile(const char* fileLoc);
     void decodeAudio(AVPacket *packet,AVFrame *frame);
     void clearResources();

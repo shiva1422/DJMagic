@@ -30,6 +30,9 @@ extern "C"
 #include "libswresample/swresample.h"
 
 }
+
+#define MIN_FRAMES 25
+#define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define VIDEO_PICTURE_QUEUE_SIZE 3
 #define SUBPICTURE_QUEUE_SIZE 16
 #define SAMPLE_QUEUE_SIZE 9
@@ -56,6 +59,7 @@ enum ShowMode {
 } ;
 typedef int64_t int64;
 typedef int16_t int16;
+class MediaPlayer;
 class PacketQueue{
     AVFifoBuffer *packetList = nullptr;
     int numPackets;
@@ -63,12 +67,19 @@ class PacketQueue{
     int64 duration;
     int abortReq;
     int serial;
-    pthread_cond_t * cond;
-    pthread_mutex_t *mutex;/////init
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+
+    int putPrivate(AVPacket *pkt);
 public:
     friend class Player;
     friend class MediaPlayer;
     int init();
+    void start();
+    void flush();
+    int put(AVPacket *pkt);
+    int putNullPacket(AVPacket *pkt , int streamInd);
+    int hasEnoughtPackets(AVStream *stream, int streadId);
 };
 class AudioParams{
     int freq;
@@ -121,12 +132,12 @@ class FrameQueue{
     Frame frameQueue[FRAME_QUEUE_SIZE];
     int rindex;
     int windex;
-    int size;
+    int size =0;
     int maxSize;
     int keepLast;
     int rindexShown;
-    pthread_mutex_t*  mutex;////////init
-    pthread_cond_t* cond;
+    pthread_mutex_t  mutex;////////init
+    pthread_cond_t cond;
     PacketQueue *packetQueue;
 
 public:
@@ -138,8 +149,8 @@ public:
 class Codec {
 private:
     AVPacket *packet = nullptr;
-    PacketQueue *packetQueue = nullptr;
-    AVCodecContext  *codecContext = nullptr;
+    PacketQueue *packetQueue ;
+    AVCodecContext  *codecContext;
     int packetSerial;
     int finished;
     int packetPending;
@@ -148,13 +159,13 @@ private:
     AVRational startPtsTB;
     int64 nextPts;
     AVRational nextPtsTB;
-    pthread_t  *thrId = nullptr;
-    pthread_cond_t  *condEmptyQ = nullptr;
+    pthread_t  thrId;
+    pthread_cond_t  *condEmptyQ ;//this is init from player;
     //decoder threadID;
 public:
     friend class MediaPlayer;
     int init(AVCodecContext* codecContext,PacketQueue *packetQueue ,pthread_cond_t *emptyQueueCond);
-    int start()
+    int start(void* (*fn)(void *),MediaPlayer *player);//return bool check simlar funcs
 
 };
 
