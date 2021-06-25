@@ -71,7 +71,7 @@ void android_main(struct android_app* app)
         // usleep(1000);
 
         view.draw();
-       // videoView.draw();
+        videoView.draw();
        // Graphics::printGlError("Video View");
         eglSwapBuffers(context.eglDisplay, context.eglSurface);
         frameTime.end();

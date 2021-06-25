@@ -5,6 +5,7 @@
 #include <cstring>
 #include "VideoView.h"
 #include "MediaPlayer.h"
+#include "Codec.h"
 VideoView::VideoView() {}
 
 VideoView::VideoView(int imageWidth, int imageHeight, int numFrames)
@@ -32,6 +33,9 @@ void VideoView::setFile(const char *assetLoc)
     mediaPlayer = new MediaPlayer;
     mediaPlayer->setFile(assetLoc);
     mediaPlayer->outputView=this;
+    //temp
+    setTexture(100,100,1);
+
     //uncomment all accordingly;
    // Bitmap bitmapParams=mediaPlayer->getImageParams();
    // Logi("setFile video","height is %d and width is %d",bitmapParams.width,bitmapParams.height);
@@ -41,7 +45,11 @@ void VideoView::setFile(const char *assetLoc)
 }
 void VideoView::draw()
 {
-     Logi("VIdeo View :","draw");
+    refreshVideo();
+    texId = textures[0].tex;
+    texBufId = textures[0].buf;
+    ImageView::draw();
+    /* Logi("VIdeo View :","draw");
      static bool filling = false,swapReq = false,draw = false;
 
          if(pthread_mutex_lock(&mediaPlayer->mutex) == 0)
@@ -86,7 +94,7 @@ void VideoView::draw()
 
 
 
-
+/*
     if(true)
     {
        // texId = texToDraw->tex;
@@ -95,7 +103,7 @@ void VideoView::draw()
        texBufId = textures[0].buf;
         ImageView::draw();
     }
-
+*/
 
 }
 kforceinline void VideoView::checkUpdate()
@@ -130,9 +138,37 @@ kforceinline void VideoView::checkUpdate()
       buf = nullptr;
       texUpdate=false;
       updated=true;
-
-
     }
     pthread_mutex_unlock(&mediaPlayer->mutex);
 
+}
+
+void VideoView::refreshVideo()
+{
+    double remTime = 0.01;
+    mediaPlayer->onRefresh(&remTime);
+}
+void VideoView::updateTexture(Frame *frame)
+{
+    if(textures[0].bitmapWidth != frame->width || textures[0].bitmapHeight != frame->height)
+    {
+        textures[0] .reallocTexture(frame->width,frame->height);
+    }
+    uint8 *out =textures[0].mapBuf();
+ if(out)
+    {
+        for(int x = 0;x <frame->width;++x)
+        {
+            for(int y=0 ; y < frame->height ; ++y)
+            {
+                // MediaLogE("the width adn height %d and %d",videoFrame->width,videoFrame->height);
+                out[y * frame->width * 4 + x * 4 ]     =  frame->frame->data[0][ y *frame->frame->linesize[0] + x];
+                out[y *  frame->width * 4 + x * 4 + 1 ] = frame->frame->data[0][ y *frame->frame->linesize[0] + x];
+                out[y * frame->width * 4 + x * 4 + 2]  = 255;//player->videoFrame->data[0][ y * player->videoFrame->linesize[0] + x];
+                out[y *  frame->width * 4 + x * 4 + 3]  = 255;
+            }
+        }
+        textures[0].unmapBuf();
+
+    }
 }

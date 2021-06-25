@@ -34,7 +34,6 @@ private:
     int fd=-1;
 
     bool bPlaying=false,bAudioInit=false,bVideoInit=true;
-    AudioTrack *audioTrack= nullptr;
     MediaCodec *audioCodec= nullptr;
     int videoFrameCount=0,audioFrameCount=0;
 
@@ -78,8 +77,7 @@ private:
     FrameQueue picFQ,subPicFQ,sampleFQ;
 
     PacketQueue audPktQ,vidPktQ,subPktQ;
-    //Aud
-    bool muted = false;
+
 
     //time and state
     int eof = 0 , abortRequest = 0 ,realTime;//abortReq check;
@@ -99,6 +97,12 @@ private:
 
     int getMasterSyncType();//to clock
     double getMasterClock();//to clock current master ClockValue
+    void checkExtClkSpeed();
+    double getVidPicDuration(Frame *pic,Frame *nexPic);
+    double getMasterClkValue();
+    double computeTargetDelay(double delay);
+    void updateVideoPts(double pts,int64 pos,int serial);
+    void syncClockToSlave(Clock *c, Clock * slave);
 
 
     int packetQget(PacketQueue *packetQueue, AVPacket *packet,int block ,int *serial);//to packetQ
@@ -125,6 +129,48 @@ private:
     bool isEnded = false;//after lastFrame;
 
     //New
+
+
+    //Audio;
+        //from stream
+    int sampleRate,numChannels;
+    uint64_t channelLayout;
+
+    int audioBufSizeHW;
+    uint8 *audioBuf;//channel 1 and below is channel 2
+    uint8 *audioBuf2;
+    int numSamples = 0;
+    unsigned int audioBufSize = 0,audioBuf2Size;
+    int audioBufIndex =0;//in bytes
+    int audioWriteBufSize;
+    int audioVolume;
+    bool muted = false;
+    struct AudioParams audioSrcParams;
+    struct AudioParams audioTargetParams;
+    //swrContext format convert;
+    int16 sampleArray[SAMPLE_ARRAY_SIZE];
+    int sampleArrayIndex;
+    int lastIStart;
+    int xPos;
+    double lastVisTime;
+        //out
+    int64 audioCallbackTime;
+    int audioDiffAvgCount = 0 , audioClockSerial = 0;//ser?
+    double audioDiffCum = 0.0,audioDiffAvgCoef = 0 ,audDiffThreshold = 0.0,audioClock;
+    friend class AudioTrack;
+    AudioTrack *audioTrack;
+    static void *audioThread(void *mediaPlayer);
+    int decodeAudioFrame();
+    void audioCallback(void *audioData, int32 numFrames);
+    int synchronizeAudio(int numSamples);
+
+
+
+
+
+
+
+
     status initFrameAndPacketQsClocks();
     status openInputFindStreamInfo();
     status openStreamsAndCodecs();
@@ -133,24 +179,28 @@ private:
     void stepToNextFrame();
     void streamTogglePause();
 
+    //display
+    int forceRefresh = 0;
+    void onRefresh(double *remainingTime);
+    void videoDisplay();
 
 
-    void playAudio();
-    void playVideo();
+
     int  receiveFrame(MediaPlayer *player);
     bool fillOutput(MediaPlayer *player, uint8* out);
 
     void setError(const char *error);
     static void *videoThread(void *mediaPlayer);
-    static void *audioThread(MediaPlayer *player);
     static void *subtitleThread(MediaPlayer *player);
     int getVideoFrame(AVFrame *frame);
-    int queuePicture(AVFrame *srcFrame , double pts , double duration ,int64 pos, int serial);
     int decoderDecodeFrame(Codec *codec , AVFrame *frame ,AVSubtitle *sub);//to codec
-    Frame* frameQueuePeekReadable(FrameQueue *f);//to frame
-    Frame* frameQueuePeekWritable(FrameQueue *f);//to frame
     static void* masterReadThread(void *mediaPlayer);
     static int decodeInterruptCallBack(void *ctx);
+
+
+
+
+
 
 
 
@@ -169,10 +219,11 @@ public:
     void clearResources();
     Bitmap getImageParams(); //later can be used based on image format;just gives image params not p
     bool getFrame(void *dest, Bitmap bitmapParams);
+    static AudioFormat getAudioFormatFromAVSampleFormat(AVSampleFormat sampleFormat);
 
 
     /*
-     * meths
+     *meths
      *confiure codecs,
      *
      */

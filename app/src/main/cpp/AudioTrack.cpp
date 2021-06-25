@@ -4,14 +4,20 @@
 
 #include "AudioTrack.h"
 #include "oboe/AudioStreamBuilder.h"
+#include "MediaPlayer.h"
+
 using namespace oboe;
 AudioTrack::AudioTrack()
+{
+
+}
+bool AudioTrack::configure()
 {
     AudioStreamBuilder audioStreamBuilder;
     audioStreamBuilder.setSampleRate(sampleRate);
     audioStreamBuilder.setChannelCount(numChannels);
     audioStreamBuilder.setFormat(audioFormat);
-    //audioStreamBuilder.setCallback(this);//
+    audioStreamBuilder.setCallback(this);
     audioStreamBuilder.setContentType(ContentType::Music);
     audioStreamBuilder.setPerformanceMode(PerformanceMode::LowLatency);
     audioStreamBuilder.setSharingMode(SharingMode::Exclusive);
@@ -19,16 +25,19 @@ AudioTrack::AudioTrack()
     if(result!=Result::OK)
     {
         Loge("AudioTrack","Cound not create stream");
-        return;
+        return false;
     }
+    //checkDoc below for runtime tuning of latency
     auto res=stream->setBufferSizeInFrames(stream->getFramesPerBurst()*2);
     if(res)
     {
-        Logi("AudioTrack","buffers size is %d",res.value());
+        audioBufSizeHW = res.value() * stream->getBytesPerFrame();
+        Logi("AudioTrack","buffers size is %d ",audioBufSizeHW );
     }
     result=stream->requestStart();//keep result;
     //Close stream
-
+    bConfigured = true;//above if might false this
+    return true;
 }
 AudioTrack::~AudioTrack()
 {
@@ -36,10 +45,30 @@ AudioTrack::~AudioTrack()
     delete stream;
     stream= nullptr;
 }
-AudioTrack::AudioTrack(short numChannels, AudioFormat audioFormat, short sampleRate)
+AudioTrack::AudioTrack(int numChannels, int sampleRate, AudioFormat audioFormat,void *dataSrc)
 {
+    this->numChannels = numChannels;
+    this->sampleRate = sampleRate;
+    this->audioSrc = dataSrc;
+    this->audioFormat =audioFormat;
+    configure();
 
-
+}
+DataCallbackResult AudioTrack::onAudioReady(AudioStream *audioStream, void *audioData,int32_t numFrames)
+{
+   // memset(audioData,255,numFrames*2);
+    MediaPlayer *player = (MediaPlayer *)audioSrc;
+    if(player)
+    {
+        Loge("onAudioReady ","requries %d frame",numFrames);
+        player->audioCallback(audioData,numFrames);
+    }
+    else memset(audioData,0,numFrames*audioStream->getBytesPerFrame());
+    return DataCallbackResult::Continue;
+}
+int AudioTrack::getBufSize()
+{
+    return audioBufSizeHW;
 }
 void AudioTrack::submit(void *bufferData, int numFrames)
 {

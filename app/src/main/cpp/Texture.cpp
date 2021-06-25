@@ -39,7 +39,19 @@ Texture Texture::createTexture(int bitmapWidth , int bitmapHeight)
     }
     return texture;
 }
+void Texture::reallocTexture(int width, int height)
+{
+    Loge("Texture realloc","test1");
+    if(glIsBuffer(buf))
+        glDeleteBuffers(1,&buf);
+    if(glIsTexture(tex))
+        glDeleteTextures(1,&tex);
+    *this = createTexture(width,height);
+    Loge("Texture realloc","test2");
 
+
+    //Needs change in createTex
+}
 uint8* Texture::mapBuf()
 {
 
@@ -73,6 +85,7 @@ void Texture::unmapBuf()
 }
 void Texture::swapTextures(Texture &tex1, Texture &tex2)
 {
+
     Texture temp=tex1;
     tex1 = tex2;
     tex2 = temp;

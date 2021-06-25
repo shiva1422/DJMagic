@@ -311,7 +311,7 @@ kforceinline int MediaPlayer::startReading()
         }
 
         //if tthe queue are full ,no need to read more
-        if(infiniteBuf<1 && (audPktQ.size + vidPktQ.size + subPktQ.size) > MAX_QUEUE_SIZE ||(vidPktQ.hasEnoughtPackets(vStream,videoStrInd)))//2997 //audio and subtitle as well;
+        if(infiniteBuf<1 && (audPktQ.size + vidPktQ.size + subPktQ.size) > MAX_QUEUE_SIZE ||(vidPktQ.hasEnoughtPackets(vStream,videoStrInd)) && audPktQ.hasEnoughtPackets(aStream,audioStrInd))// subtitle as well;
         {
             //wait 10 ms continue;//check all rets;
             timespec absWaitTime;
@@ -338,7 +338,11 @@ kforceinline int MediaPlayer::startReading()
                 {
                     vidPktQ.putNullPacket(pkt ,videoStrInd);
                 }
-                //audio sub streams as well;
+                if(audioStrInd >= 0)
+                {
+                    audPktQ.putNullPacket(pkt , audioStrInd);
+                }
+                // sub streams as well;
             }
             if(formatContext->pb && formatContext->pb->error)
             {
@@ -372,7 +376,11 @@ kforceinline int MediaPlayer::startReading()
             vidPktQ.put(pkt);
 
         }
-        //else if audio subtitle
+        else if(pkt->stream_index == audioStrInd && pktInPlayRange )
+        {
+            audPktQ.put(pkt);
+        }
+        //else if subtitle
         else
         {
             av_packet_unref(pkt);
@@ -492,7 +500,7 @@ status MediaPlayer::openStreamsAndCodecs()
                 goto fail;
             }
 
-            AVDictionary *opts = NULL;
+            AVDictionary *opts = nullptr;
 
             if((res=avcodec_open2(vDecodeContext,vDecoder,NULL)) < 0)
             {//last option for setting private option for decoder
@@ -516,7 +524,106 @@ status MediaPlayer::openStreamsAndCodecs()
     vStream->discard = AVDISCARD_DEFAULT;//discard all to make stream inactive after open? //next and before few lines check 2641
     ///extranted the stream info above now open streamComponenets;(above needs improvement);above needs to be moved to funct;
 
+    //Audio ??this whole function can be reduced do loop or swithch or separe audio and vid to separate functions;
+     mediaType = AVMEDIA_TYPE_AUDIO;
+     res = av_find_best_stream(formatContext,mediaType,-1,-1,&aDecoder,0);//options check;return withing range nb_streams;
+    if(res<0)
+    {
+        if(res==AVERROR_STREAM_NOT_FOUND)
+        {
+            MediaLogE("could not find %s stream in file %s",av_get_media_type_string(mediaType));
 
+
+        }
+        else if(res==AVERROR_DECODER_NOT_FOUND)
+        {
+            MediaLogE("found %s stream in file %s but could not find decoder",av_get_media_type_string(mediaType));
+        }
+        return STATUS_KO;//also check audio subtitles
+    }
+    else
+    {//if decoder cant be found should decoderFail flag;todo
+        audDisable = false;
+        audioStrInd=res;//or can  be passed to above func as well
+        aStream = formatContext->streams[audioStrInd];
+        if(!aDecoder)
+        {
+            //can also find by name;
+            aDecoder=avcodec_find_decoder(aStream->codecpar->codec_id);
+        }
+        if(aDecoder)
+        {
+            //cannot use codeccontext directly from stream so create context and get it from codecparameters.
+            aDecodeContext=avcodec_alloc_context3(aDecoder);
+            if(!aDecodeContext)
+            {
+                res = AVERROR(ENOMEM);
+                goto fail;
+            }
+            //  vDecodeContext->workaround_bugs=1;
+            // avcodec_parameters_copy(vDecodeContext->c)
+            res=avcodec_parameters_to_context(aDecodeContext,aStream->codecpar);
+
+            av_log((void *)aDecodeContext, AV_LOG_INFO, "SDFDS");
+            if(res<0)
+            {
+                MediaLogE("OpenCodecs:audio Params to context failed");
+                goto fail;
+            }
+
+            AVDictionary *opts = nullptr;
+
+            if((res=avcodec_open2(aDecodeContext,aDecoder,NULL)) < 0)
+            {//last option for setting private option for decoder
+                MediaLogE("Open %s codec failed",av_get_media_type_string(mediaType));
+            }
+            else
+            {
+                sampleRate = aDecodeContext->sample_rate;
+                numChannels = aDecodeContext->channels;
+                channelLayout = aDecodeContext->channel_layout;
+                MediaLogE("audioCodec opened for stream index %d ...Creating audio Track sampleRate = %d ,numChannels = %d ,channelLayout = %lu , sampleSize",audioStrInd , sampleRate,numChannels,channelLayout);
+                audioTrack = new AudioTrack(numChannels,sampleRate,MediaPlayer::getAudioFormatFromAVSampleFormat(aDecodeContext->sample_fmt),(void *)this);//clear;
+                if(audioTrack)
+                {
+                    bAudioInit=true;
+                    audDisable = false;
+                    //the below should be the final params accepted or set on the audioStream;//if the params from stream are not available on device
+                    //for now same as set on audioTrack;move below to class meth.
+                    audioTargetParams.freq = sampleRate;
+                    audioTargetParams.format = aDecodeContext->sample_fmt;
+                    audioTargetParams.channels = numChannels;
+                    audioTargetParams.channelLayout = channelLayout;
+                    audioTargetParams.frameSize = av_samples_get_buffer_size(NULL,audioTargetParams.channels,1,audioTargetParams.format,1);
+                    audioTargetParams.bytesPerSec = av_samples_get_buffer_size(NULL,audioTargetParams.channels,audioTargetParams.freq,audioTargetParams.format,1);
+                    ////audioTargetParams.framesize || bytesPerSecc<=0 fail;
+                    audioBufSizeHW = audioTrack->getBufSize();//check
+                    audioSrcParams = audioTargetParams;
+                    //init averaging filter;
+                    audioDiffAvgCoef = exp(log(0.01) / AUDIO_DIFF_AVG_NB);//?
+                    audioDiffAvgCount = 0;
+
+                    ///since we do not have a precise enough audio FIFO fullness,we correct audio sync only if larger than this threshold
+                    audDiffThreshold = (double)(audioBufSizeHW)/audioTargetParams.bytesPerSec;
+                    //pause track?
+                    //setCallBack......................?for the track;
+
+
+                    MediaLogI("Audio Track created");
+                    //else try other formats if due to configure err;
+                }
+
+            }
+
+        }
+        else
+        {
+            MediaLogE("ERROR DECODER NOT FOUND Audio");//fatal;
+            return STATUS_KO_FATAL;
+        }
+
+
+    }
 MediaLogI("Open Streams and Codecs Success");
 return STATUS_OK;
     fail:
@@ -524,95 +631,33 @@ return STATUS_OK;
 }
 status MediaPlayer::initAndStartCodecs()
 {
-    //for now just vid;//if fail cclear contextxts;
+    //for now just vid;//if fail cclear contextxts;diable aud ,vid ,inits if failed; do these based on vid init and baudinit flags
 
     if(vidDec.init(vDecodeContext,&vidPktQ,&condContReadThread))//if fails free this codecContext
         return STATUS_KO_FATAL;
     if(vidDec.start(MediaPlayer::videoThread,this))
         return STATUS_KO_FATAL;
     else
-        queueAttachmentsReq = 1;//id vidDec success
+        queueAttachmentsReq = 1;//id vidDec succes
+    if(audDec.init(aDecodeContext,&audPktQ,&condContReadThread))
+        return STATUS_KO_FATAL;
+    if((formatContext->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) &&formatContext->iformat->read_seek)
+    {
+        audDec.startPts = aStream->start_time;
+        audDec.startPtsTB = aStream->time_base;
+    }
+    if(audDec.start(MediaPlayer::audioThread,this))
+        return STATUS_KO_FATAL;
     MediaLogE("init and StartCodecs codec thread started success");
     return STATUS_OK;
 
 }
-MediaPlayer::~MediaPlayer()
+
+
+
+Bitmap MediaPlayer::getImageParams()
 {
-    close(fd);//error check?
-    delete audioCodec;
-    audioCodec= nullptr;
-    delete audioTrack;
-    audioCodec= nullptr;
-}
-void MediaPlayer::setError(const char *error)//check thread Safe?
-{
-    this->errorString += error;
-    MediaLogE("%s",error);
-}
-
-
-
-void MediaPlayer::playVideo()
-{
-/*
-    videoFrame=av_frame_alloc();//free
-    if(!videoFrame)
-        return;
-    packet=av_packet_alloc();
-
-    packet->size=0;
-    packet->data=NULL;
-    if(!packet)
-    {
-        return;
-    }
-
-    int res=0;
-
-  //  res=av_read_frame(formatContext,packet);
-    MediaLogI("Play Startd %d error %s",res,av_err2str(res));
-
-    while(av_read_frame(formatContext,packet)>=0)
-    {
-        MediaLogI("Read packe","succes");
-        if(packet->stream_index != videoStrInd)
-        {
-            continue;//cuz now only decoding video
-        }
-        res=avcodec_send_packet(vDecodeContext,packet);
-        if(res<0)
-        {
-            MediaLogE("Error sending packet");
-            return;
-        }
-        while(res  >= 0)
-        {
-            res=avcodec_receive_frame(vDecodeContext,videoFrame);
-            if(res == AVERROR(EAGAIN) || res == AVERROR_EOF)
-            {
-                break;
-            }
-
-            else if(res<0)
-            {
-                MediaLogE("Decode paket failed %s",av_err2str(res));
-                return;
-            }
-            MediaLogE("FrameReeived");
-            break;
-
-        }
-        av_packet_unref(packet);
-        break;
-
-
-    //    break;
-      //  av_packet_unref(packet);
-        //got single frame just break loop and display single image for now;
-
-    }
-    MediaLogI("Play Startd %d error %s",res,av_err2str(res));
- /*   //use SWS for coverting frame to our requirement for which intermediate frame is req for conversion
+  /*   //use SWS for coverting frame to our requirement for which intermediate frame is req for conversion
     AVFrame *rgbFrame=av_frame_alloc();
     if(!rgbFrame)
         return;
@@ -627,16 +672,175 @@ void MediaPlayer::playVideo()
     //av_image_fill_arrays(rgbFrame->data,rgbFrame->linesize)
     */
 
-
-}
-
-Bitmap MediaPlayer::getImageParams()
-{
-   Bitmap bitmap;
+    Bitmap bitmap;
    bitmap.height=vDecodeContext->height;
    bitmap.width=vDecodeContext->width;
    Logi("getPar","the width of pic is %d and height is %d",bitmap.height,bitmap.width);
     return bitmap;
+}
+void MediaPlayer::audioCallback(void *audioData,int32 numFrames)
+{
+    //prepare new aud buff;
+    float *stream = (float *)audioData;
+    int audioSize , numFrames1,sampleCount;
+    audioCallbackTime = av_gettime_relative();
+    while(numFrames > 0)
+    {
+
+        if(audioBufIndex >= numSamples)
+        {
+            sampleCount = decodeAudioFrame();
+            if(sampleCount < 0)
+            {
+                //if err output silence
+                audioBuf = NULL;
+                audioBufSize = OBOE_AUDIO_MIN_BUFFER_SIZE / audioTargetParams.frameSize * audioTargetParams.frameSize;
+                numSamples = audioBufSize / 8;//byte to float with 2 channels;
+            }
+            else
+            {
+                //update sample display if there;
+                //audioBufSize = audioSize;
+                numSamples = sampleCount;
+            }
+            audioBufIndex = 0;
+
+        }
+        //audioBuf Index is acturally audioFrameIndex;
+        numFrames1 = numSamples - audioBufIndex;
+        if(numFrames1 > numFrames)
+            numFrames1 = numFrames;
+        //fill bufs
+        if(!muted && audioBuf)//one cond with volume 2479
+        {
+          //  memcpy(stream,(uint8 *)audioBuf + audioBufIndex,numFrames1);
+            float *bufCh1 = (float *)(audioBuf),*bufCh2 = (float *)(audioBuf2);
+            bufCh1 += audioBufIndex,bufCh2 += audioBufIndex;
+            for(int i=0; i < numFrames1; i++)
+            {
+                stream[2*i]=bufCh1[i];
+                stream[2*i+1]=bufCh2[i] ;
+              //  MediaLogE("sample values %f and %f",bufCh1[i],bufCh2[i]);
+            }
+
+        }
+        else
+        {
+            memset(stream, 0, numFrames1);
+            if(!muted && audioBuf)
+            {
+                /////////////MIX audio to dst;s
+                MediaLogE("EEEEEEEEEEEEEEEF CALLABAC");
+            }
+        }
+        numFrames -= numFrames1;
+        stream += numFrames1 *2;
+        audioBufIndex += numFrames1;
+
+    }
+    audioWriteBufSize = numSamples * 8 - audioBufIndex * 8;
+    //aasming audio driver has two periods
+    if(!isnan(audioClock))
+    {
+        audClock.setClockAt(audioClock - (double)(2 * audioBufSizeHW + audioWriteBufSize)/audioTargetParams.bytesPerSec,audioClockSerial,audioCallbackTime/1000000.0);
+        syncClockToSlave(&extClock,&audClock);
+    }
+
+}
+int MediaPlayer::decodeAudioFrame()
+{
+    /*
+     * decode audio frame and return its uncompressed size;
+     * frame deoded ,converted if required and stored in MediaPlayer.audioBuf,return size in bytes of that buf;
+     */
+    int dataSize ,resampledDataSize;//if resampled
+    int64_t decChannelLayout;
+    av_unused double audioClock0;
+    int wantedNumSamples;
+    Frame *af;
+    if(paused)
+        return -1;
+
+    do{
+        if(!(af = sampleFQ.peekReadable()))
+            return -1;
+        sampleFQ.next();
+    }while(af->serial != audPktQ.serial);
+
+    //datasize below gives size of both channels;
+    dataSize = av_samples_get_buffer_size(NULL, af->frame->channels, af->frame->nb_samples,static_cast<AVSampleFormat>(af->frame->format), 1);//check cast;
+    decChannelLayout = (af->frame->channel_layout && af->frame->channels == av_get_channel_layout_nb_channels(af->frame->channel_layout)) ? af->frame->channel_layout : av_get_default_channel_layout(af->frame->channels);
+    wantedNumSamples = synchronizeAudio(af->frame->nb_samples);
+
+    //some work if the output format not equal to the current format and needed conversion;//2375
+
+    //else2430
+    audioBuf = af->frame->data[0]; //multiple channels
+    audioBuf2 =af->frame->data[1];
+    resampledDataSize = dataSize;
+
+    audioClock0 = audioClock;
+    //update the audio clock with pts;
+    if(!isnan(af->pts))
+    {
+        audioClock = af->pts + (double)af->frame->nb_samples /af->frame->sample_rate;
+    }
+    else
+        audioClock = NAN;
+    audioClockSerial = af->serial;
+
+
+    //printinfo if debug;
+    //    static double last_clock;printf("audio: delay=%0.3f clock=%0.3f clock0=%0.3f\n",is->audio_clock - last_clock,is->audio_clock, audio_clock0);last_clock = is->audio_clock;
+
+    return wantedNumSamples;//earlier resampledDataSize;
+
+}
+int MediaPlayer::synchronizeAudio(int numSamples)
+{
+    /*
+     * return wanted num samples to get better sync if synttype is video or external master clock
+     */
+    int wantedNumSamples = numSamples;
+
+    //if not master then try to remove or add samples to correct the clock
+
+    if(getMasterSyncType() != AV_SYNC_AUDIO_MASTER)
+    {
+        double diff ,avgDiff;
+        int minNumSamples , maxNumSamples;
+        diff = audClock.getValue() - getMasterClkValue();
+
+        if(!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD)
+        {
+            audioDiffCum = diff + audioDiffAvgCoef * audioDiffCum;
+            if(audioDiffAvgCoef < AUDIO_DIFF_AVG_NB)
+            {
+                //not enough measures t ohave a corresct estimate
+                audioDiffAvgCount++;
+            }
+            else
+            {
+                //estimate A-v differnece;
+                avgDiff = audioDiffCum * (1.0 - audioDiffAvgCoef);
+                if(fabs(avgDiff) >= audDiffThreshold)
+                {
+                    wantedNumSamples = numSamples + (int)(diff * audioSrcParams.freq);
+                    minNumSamples = ((numSamples *(100 - SAMPLE_CORRECTION_PERCENT_MAX) / 100));
+                    maxNumSamples = ((numSamples * (100 + SAMPLE_CORRECTION_PERCENT_MAX) /100));
+                    wantedNumSamples = av_clip(wantedNumSamples,minNumSamples,maxNumSamples);
+                }
+              //  av_log(NULL, AV_LOG_TRACE, "diff=%f adiff=%f sample_diff=%d apts=%0.3f %f\n",diff, avg_diff, wanted_nb_samples - nb_samples,is->audio_clock, is->audio_diff_threshold);
+            }
+        }
+        else
+        {
+            //too big diff : may be initial pts errors so reset A-V filter;
+            audioDiffAvgCount = 0;
+            audioDiffCum = 0;
+        }
+    }
+    return wantedNumSamples;
 }
 
 kforceinline int MediaPlayer::receiveFrame(MediaPlayer * player)
@@ -770,7 +974,7 @@ void *MediaPlayer ::videoThread(void *mediaPlayer)
 
         duration = (frameRate.num && frameRate.den ? av_q2d(((AVRational){frameRate.den,frameRate.num})) : 0);
         pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
-        ret = player->queuePicture(frame , pts ,duration,frame->pkt_pos,player ->vidDec.packetSerial);
+        ret = player->picFQ.queuePicture(frame , pts ,duration,frame->pkt_pos,player ->vidDec.packetSerial);
         av_frame_unref(frame);
         if(ret < 0)
         {
@@ -783,6 +987,43 @@ void *MediaPlayer ::videoThread(void *mediaPlayer)
     theEnd:
     av_frame_free(&frame);
     return 0;
+}
+void *MediaPlayer::audioThread(void *mediaPlayer)
+{
+    MediaPlayer *player  = (MediaPlayer *)mediaPlayer;
+    AVFrame *frame = av_frame_alloc();
+    Frame *af;
+    int gotFrame = 0;
+    AVRational tb;
+    int ret = 0;
+    if(!frame)
+    {
+        MediaLogE("AudioThread frame not allcoated");
+        ret = AVERROR(ENOMEM);//return here
+    }
+
+    do
+        {
+            if((gotFrame = player->decoderDecodeFrame(&player->audDec,frame,NULL)) < 0)
+                goto theEnd;
+
+            if(gotFrame)
+            {
+                tb = (AVRational) {1, frame->sample_rate};
+                if (!(af = player->sampleFQ.peekWritable()))
+                    goto theEnd;
+                af->pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+                af->pos = frame->pkt_pos;
+                af->serial = player->audDec.packetSerial;
+                af->duration = av_q2d((AVRational) {frame->nb_samples, frame->sample_rate});
+                av_frame_move_ref(af->frame, frame);
+                player->sampleFQ.push();
+            }
+        } while (ret >= 0 || ret == AVERROR(EAGAIN) || ret == AVERROR_EOF);
+    theEnd:
+    av_frame_free(&frame);
+    MediaLogE("the end");
+    //return ret;
 }
 int MediaPlayer::getVideoFrame(AVFrame *frame)
 {
@@ -875,9 +1116,25 @@ int MediaPlayer::decoderDecodeFrame(Codec *dec, AVFrame *frame, AVSubtitle *sub)
                                 frame->pts = frame->pkt_dts;
                             }
                         }
-
                         break;
-                        //OtherCases;
+                    case AVMEDIA_TYPE_AUDIO:
+                        res = avcodec_receive_frame(dec->codecContext,frame);
+                        if(res >=0)
+                        {
+                            AVRational  tb = (AVRational){1 , frame->sample_rate};
+                            if(frame->pts != AV_NOPTS_VALUE)
+                                frame->pts = av_rescale_q(frame->pts,dec->codecContext->pkt_timebase,tb);
+                            else if(dec->nextPts != AV_NOPTS_VALUE)
+                                frame->pts = av_rescale_q(dec->nextPts , dec->nextPtsTB,tb);
+                            if(frame->pts != AV_NOPTS_VALUE)
+                            {
+                                dec->nextPts = frame->pts +frame->nb_samples;
+                                dec->nextPtsTB = tb;
+                            }
+                            MediaLogE("audio queued");
+                        }
+                        break;
+
                 }
                 if(res == AVERROR_EOF)
                 {
@@ -993,54 +1250,225 @@ int MediaPlayer::packetQget(PacketQueue *packetQueue, AVPacket *packet,int block
     return res;
 
 }
-
-int MediaPlayer::packetQPutPrivate(PacketQueue *packetQueue, AVPacket *packet)
+void MediaPlayer::updateVideoPts(double pts, int64 pos, int serial)
 {
+    //update current vid pts
+    vidClock.setClock(pts,serial);
+    syncClockToSlave(&extClock , &vidClock);//move to clock;
 
 }
-int MediaPlayer::queuePicture(AVFrame *srcFrame, double pts, double duration, int64 pos,int serial)
+void MediaPlayer::syncClockToSlave(Clock *c, Clock *slave)
 {
-    Frame *vp;
-    #ifndef NDEBUG
-    MediaLogI(" FrameType = %c  ,pts = %0.3f",av_get_picture_type_char(srcFrame->pict_type),pts);//print frameInfo;
-    #endif
-
-    if(!(vp = frameQueuePeekWritable(&picFQ)))
-        return -1;
-    vp->sar = srcFrame->sample_aspect_ratio;
-    vp->uploaded =0;
-    vp->width = srcFrame->width;
-    vp->height =srcFrame->height;
-    vp->format = srcFrame->format;
-
-    vp->pts = pts;
-    vp->duration = duration;
-    vp->pos = pos;
-    vp->serial = serial;
-    //setDefaultWindowSize(vp->width,vp->height,vp->sar);
-
-    av_frame_move_ref(vp->frame,srcFrame);//should the unrefbe called? on dest before thsis?
-    picFQ.push();
-    return 0;
-
-
+    double clock = c->getValue();
+    double slaveClock = slave->getValue();
+    if(!isnan(slaveClock) && (isnan(clock) || fabs(clock -slaveClock) > AV_NOSYNC_THRESHOLD))
+        c->setClock(slaveClock,slave->serial);
 }
-Frame* MediaPlayer::frameQueuePeekWritable(FrameQueue *f)
+void MediaPlayer::onRefresh(double *remainingTime)
 {
-    //Move into FrameQueue;
-    //wait until there is space to put a new Frame;
-    pthread_mutex_lock(&f->mutex);
-    while(f->size >= f->maxSize && !f->packetQueue->abortReq)
+    //display/main Thread
+    //double remaininTime;//from mainLoop consider screenRefresh reate;
+    double time;
+
+    Frame *sp , *sp2;//subtit pics
+    if(!paused && getMasterSyncType() == AV_SYNC_EXTERNAL_CLOCK && realTime) //threadsafe check;
+        checkExtClkSpeed();
+    if(!vidDisable && aStream) //showmode!video i.e audio and rdft display;1585
     {
-        pthread_cond_wait(&f->cond,&f->mutex);
-        MediaLogI("VideoTHread Check");
+        time = av_gettime_relative() / 1000000.0;
+      //  videoDisplay();
+        //other
     }
-    pthread_mutex_unlock(&f->mutex);
+    //remaininTime = FFMIN(remaininTime,lastVIstTime +rdftspeed - time);
 
-    if(f->packetQueue->abortReq)
-        return NULL;
-    return &f->frameQueue[f->windex];
+    if(vStream)
+    {
+        retry:
+        if(picFQ.getRemainingCount() == 0)
+        {
+            //no pictures available to display;
+        }
+        else
+        {
+            double lastDuration,duration,delay;
+            Frame *vp , *lastvp ;//video pics
+
+            //dequeue the picture;
+            lastvp = picFQ.peekLast();
+            vp = picFQ.peek();
+            if(vp->serial != vidPktQ.serial)//TS
+            {
+                picFQ.next();
+                goto retry;
+            }
+
+            if(lastvp->serial != vp->serial)
+            {
+                frameTimer = av_gettime_relative() / 1000000.0;
+            }
+            if(paused)//TSCheck
+                goto display;
+
+            //compute nominal lastDuration
+            lastDuration = getVidPicDuration(lastvp,vp);
+            delay = computeTargetDelay(lastDuration);
+
+            time = av_gettime_relative()/1000000.0;
+            if(time < frameTimer + delay)
+            {
+                *remainingTime = FFMIN(frameTimer + delay -time , *remainingTime);
+                goto display;//update not req?
+            }
+
+            frameTimer += delay;
+            if(delay > 0 && time - frameTimer > AV_SYNC_THRESHOLD_MAX)
+            {
+                frameTimer = time;
+            }
+
+            pthread_mutex_lock(&picFQ.mutex);//checkcond;
+            if(!isnan(vp->pts))
+                updateVideoPts(vp->pts , vp->pos,vp->serial);
+            pthread_mutex_unlock(&picFQ.mutex);
+
+            if(picFQ.getRemainingCount() > 1)
+            {
+                Frame *nextPic = picFQ.peekNext();
+                duration = getVidPicDuration(vp,nextPic);
+                if(!step && (frameDrop>0 || (frameDrop && getMasterSyncType()!=AV_SYNC_VIDEO_MASTER) && time > frameTimer+duration))
+                {
+                    frameDropsLate++;
+                    picFQ.next();
+                    goto retry;
+                }
+            }
+
+            //SubTitle as well;1646
+            picFQ.next();
+            forceRefresh = 1;
+
+            if(step && !paused)
+                streamTogglePause();
+
+        }
+
+        display:
+        //display picture
+
+        if(!vidDisable && forceRefresh && picFQ.rindexShown)
+            videoDisplay();
+
+
+    }
+    forceRefresh = 0;
+
+    //show status//1692
+
 }
+void MediaPlayer::videoDisplay()
+{
+    //if display not init,init
+    //if no vid stream display audio - rdft else videoImageDisplay;
+    Frame *vp;
+    Frame *sp = nullptr;
+
+    vp = picFQ.peekLast();
+    //if subtitle disp subtitle
+    //calculate output pic dims using vps width ,height ,sar,also startX,startY,width ,height;
+    if(!vp->uploaded)
+    {
+        //uploadTexture;
+        //if(upload failed return)
+        outputView->updateTexture(vp);
+
+        MediaLogI("VIDEO DISPLAY %d %d %lf",vp->serial,vp->pos,vp->pts);
+        vp->uploaded = 1;
+    }
+
+}
+double MediaPlayer::getMasterClkValue()
+{
+    double val;
+
+    switch(getMasterSyncType())
+    {
+        case AV_SYNC_VIDEO_MASTER:
+            val = vidClock.getValue();
+            break;
+        case AV_SYNC_AUDIO_MASTER:
+            val = audClock.getValue();
+            break;
+        default:
+            val = extClock.getValue();
+            break;
+    }
+    return val;
+}
+double MediaPlayer::computeTargetDelay(double delay)
+{
+    double syncThresold , diff = 0;
+    //update delay to follow master sync source;
+    if(getMasterSyncType() != AV_SYNC_VIDEO_MASTER)
+    {
+        //if vid is slave ,try to correct big delays by duplacating or deleting a frame
+
+        diff = vidClock.getValue() - getMasterClkValue();
+        /* skip or repeat frame .take delayy into account to compute thresholds.still dont know if its the best guess
+         *
+         */
+        syncThresold = FFMAX(AV_SYNC_THRESHOLD_MIN , FFMIN(AV_SYNC_THRESHOLD_MAX,delay));
+        if(!isnan(diff) && fabs(diff) < maxFrameDuration)
+        {
+            if(diff <= -syncThresold)
+                delay = FFMAX(0,delay + diff);
+            else if(diff >= syncThresold && delay > AV_SYNC_FRAMEDUP_THRESHOLD)
+                delay = delay + diff;
+            else if(diff > syncThresold)
+                delay = 2 * delay;
+        }
+    }
+//    av_log(NULL, AV_LOG_TRACE, "video: delay=%0.3f A-V=%f\n",delay, -diff);
+
+return delay;
+
+}
+double MediaPlayer::getVidPicDuration(Frame *pic, Frame *nexPic)
+{
+    if(pic->serial == nexPic->serial)
+    {
+        double duration = nexPic->pts - pic->pts;
+        if(isnan(duration) || duration <= 0|| duration> maxFrameDuration)
+            return pic->duration;
+        else
+            return duration;
+    }
+    else
+    {
+        return 0.0;
+    }
+
+}
+void MediaPlayer::checkExtClkSpeed()
+{
+    if(videoStrInd >= 0 && vidPktQ.numPackets <= EXTERNAL_CLOCK_MIN_FRAMES || audioStrInd >= 0 && audPktQ.numPackets <= EXTERNAL_CLOCK_MIN_FRAMES)
+    {
+        extClock.setSpeed(FFMAX(EXTERNAL_CLOCK_SPEED_MIN , extClock.speed - EXTERNAL_CLOCK_SPEED_STEP));
+    }
+    else if((videoStrInd < 0 || vidPktQ.numPackets > EXTERNAL_CLOCK_MAX_FRAMES) && (audioStrInd < 0 || audPktQ.numPackets > EXTERNAL_CLOCK_MAX_FRAMES))
+    {
+        extClock.setSpeed(FFMIN(EXTERNAL_CLOCK_SPEED_MAX, extClock.speed + EXTERNAL_CLOCK_SPEED_STEP));
+
+    }
+    else
+    {
+        double speed = extClock.speed;
+        if(speed != 1.0)
+        {
+            extClock.setSpeed(speed + EXTERNAL_CLOCK_SPEED_STEP *(1.0 -speed)/fabs(1.0 -speed));
+        }
+    }
+}
+
 void MediaPlayer::clearResources()
 {
     avcodec_close(vDecodeContext);
@@ -1053,5 +1481,26 @@ void MediaPlayer::clearResources()
 
     //free contexts ,packet,
 }
+AudioFormat MediaPlayer::getAudioFormatFromAVSampleFormat(AVSampleFormat sampleFormat)
+{
+    if(sampleFormat == AV_SAMPLE_FMT_FLTP)
+        return AudioFormat::Float;//float planar;
+    return AudioFormat::I32;
+}
+void MediaPlayer::setError(const char *error)//check thread Safe?
+{
+    this->errorString += error;
+    MediaLogE("%s",error);
+}
+MediaPlayer::~MediaPlayer()
+{
+    close(fd);//error check?
+    delete audioCodec;
+    audioCodec= nullptr;
+    delete audioTrack;
+    audioCodec= nullptr;
+}
+
+
 //free
 //contexts,

@@ -11,6 +11,7 @@ Class::create;
 //Tomorrow //play audio and atleast 1 frame on UI;(sample formats and time syncing)
 //Divide MediaPlayer to Audio and Video player
 condSignal();.
+stereoDownMix;
 
 PPMFILe,Planes,interlaced,pmts,
 
@@ -43,11 +44,13 @@ MasterClocks sync - 1423;
 QueuePicture 1744;
 VideoRefresh 1575;video open - 1337 ,video display - 1361,videoRefresh -1575 video imagedisplay 975;refresh loop wait event 3234
 streamhasenough packet - 2731
+
+AudioOpen -2498;audio thread - 2034,callback 2455 , audioDecodeFrame - 2342;
 //order;
 
 VidState;
 readThread;
 stream_component open;2572
 decoderinit,
-decoder start => packetQstart-;
+decoder start => packetQstart;
 ,audio vidoe susb threads

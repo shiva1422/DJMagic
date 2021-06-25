@@ -31,17 +31,48 @@ extern "C"
 
 }
 
+/* Minimum OBOE audio buffer size, in samples. */
+#define OBOE_AUDIO_MIN_BUFFER_SIZE 512
+/* Calculate actual buffer size keeping in mind not cause too frequent audio callbacks */
+#define OBOE_AUDIO_MAX_CALLBACKS_PER_SEC 30
+
+/* Step size for volume control in dB */
+#define OBOE_VOLUME_STEP (0.75)
+
 #define MIN_FRAMES 25
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
+#define EXTERNAL_CLOCK_MIN_FRAMES 2
+#define EXTERNAL_CLOCK_MAX_FRAMES 10
 #define VIDEO_PICTURE_QUEUE_SIZE 3
 #define SUBPICTURE_QUEUE_SIZE 16
 #define SAMPLE_QUEUE_SIZE 9
 #define FRAME_QUEUE_SIZE FFMAX(SAMPLE_QUEUE_SIZE, FFMAX(VIDEO_PICTURE_QUEUE_SIZE, SUBPICTURE_QUEUE_SIZE))
 
+/* we use about AUDIO_DIFF_AVG_NB A-V differences to make the average */
+#define AUDIO_DIFF_AVG_NB   20
+
+/* maximum audio speed change to get correct sync */
+#define SAMPLE_CORRECTION_PERCENT_MAX 10
+
 /* NOTE: the size must be big enough to compensate the hardware audio buffersize size */
 /* TOD: We assume that a decoded and resampled frame fits into this buffer */
 #define SAMPLE_ARRAY_SIZE (8 * 65536)
 #define AV_NOSYNC_THRESHOLD 10.0
+
+/* no AV sync correction is done if below the minimum AV sync threshold */
+#define AV_SYNC_THRESHOLD_MIN 0.04
+/* AV sync correction is done if above the maximum AV sync threshold*/
+#define AV_SYNC_THRESHOLD_MAX 0.1
+/* If a frame duration is longer than this, it will not be duplicated to compensate AV sync */
+#define AV_SYNC_FRAMEDUP_THRESHOLD 0.1
+/* no AV correction is done if too big error */
+#define AV_NOSYNC_THRESHOLD 10.0
+
+/* external clock speed adjustment constants for realtime sources based on buffer fullness */
+#define EXTERNAL_CLOCK_SPEED_MIN  0.900
+#define EXTERNAL_CLOCK_SPEED_MAX  1.010
+#define EXTERNAL_CLOCK_SPEED_STEP 0.001
+
 
 
 enum {
@@ -74,6 +105,7 @@ class PacketQueue{
 public:
     friend class Player;
     friend class MediaPlayer;
+    friend class FrameQueue;
     int init();
     void start();
     void flush();
@@ -82,6 +114,7 @@ public:
     int hasEnoughtPackets(AVStream *stream, int streadId);
 };
 class AudioParams{
+public:
     int freq;
     int channels;
     int64 channelLayout;
@@ -105,6 +138,7 @@ public:
     void init(int *qSerial);
     void setClock(double pts, int serial);
     void setClockAt(double pts,int serial,double time);
+    void setSpeed(double speed);
     double getValue();
 };
 /* Common struct for handling all types of decoded data and allocated render buffers. */
@@ -127,6 +161,7 @@ public:
     friend class Player;
     friend class MediaPlayer;
     friend class FrameQueue;
+    friend class VideoView;
 };
 class FrameQueue{
     Frame frameQueue[FRAME_QUEUE_SIZE];
@@ -145,6 +180,15 @@ public:
     int init(PacketQueue *pq,int maxSize,int keepLast);
     friend class Player;
     friend class MediaPlayer;
+    Frame *peekWritable();
+    Frame *peekReadable();
+    Frame* peek();
+    Frame* peekLast();
+    Frame* peekNext();
+    int getRemainingCount();//undisplayed count;
+    int queuePicture(AVFrame *srcFrame, double pts, double duration, int64 pos,int serial);
+    void next();
+    void unrefItem(Frame *frame);//write inline check;
 };
 class Codec {
 private:

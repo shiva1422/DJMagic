@@ -42,6 +42,103 @@ void FrameQueue::push()
     pthread_cond_signal(&cond);
     pthread_mutex_unlock(&mutex);
 }
+Frame* FrameQueue::peekWritable()
+{
+    pthread_mutex_lock(&mutex);
+    while(size >= maxSize && !packetQueue->abortReq)
+    {
+        pthread_cond_wait(&cond,&mutex);
+        Logi("FQ","peekwrite check");
+    }
+    pthread_mutex_unlock(&mutex);
+
+    if(packetQueue->abortReq)
+        return NULL;
+    return &frameQueue[windex];
+}
+int FrameQueue::queuePicture(AVFrame *srcFrame, double pts, double duration, int64 pos,int serial)
+{
+    Frame *vp;
+#ifndef NDEBUG
+    Logi("queing picFrame"," FrameType = %c  ,pts = %0.3f",av_get_picture_type_char(srcFrame->pict_type),pts);//print frameInfo;
+#endif
+
+    if(!(vp = peekWritable()))
+        return -1;
+    vp->sar = srcFrame->sample_aspect_ratio;
+    vp->uploaded =0;
+    vp->width = srcFrame->width;
+    vp->height = srcFrame->height;
+    vp->format = srcFrame->format;
+
+    vp->pts = pts;
+    vp->duration = duration;
+    vp->pos = pos;
+    vp->serial = serial;
+    //setDefaultWindowSize(vp->width,vp->height,vp->sar);
+
+    av_frame_move_ref(vp->frame,srcFrame);//should the unrefbe called? on dest before thsis?
+    push();
+    return 0;
+
+
+}
+int FrameQueue::getRemainingCount()
+{
+    return size - rindexShown;
+}
+Frame* FrameQueue::peek()
+{
+    return &frameQueue[(rindex + rindexShown )% maxSize];
+}
+Frame* FrameQueue::peekLast()
+{
+    return &frameQueue[rindex];
+}
+Frame* FrameQueue::peekReadable()
+{
+    //wait untile theres ia readable new Frame;
+    pthread_mutex_lock(&mutex);
+    while(size - rindexShown <=0 && !packetQueue->abortReq)
+    {
+        pthread_cond_wait(&cond,&mutex);
+    }
+    pthread_mutex_unlock(&mutex);
+    if(packetQueue->abortReq)
+        return nullptr;
+
+    return &frameQueue[(rindex + rindexShown) %maxSize];
+
+
+}
+Frame* FrameQueue::peekNext()
+{
+    return &frameQueue[(rindex + rindexShown + 1)%maxSize];
+
+}
+void FrameQueue::next()
+{
+    if(keepLast && !rindexShown)
+    {
+        rindexShown = 1;//if rindShow 0
+        return;
+    }
+    unrefItem(&frameQueue[rindex]);
+    if(++rindex == maxSize)
+    {
+        rindex = 0;
+    }
+    pthread_mutex_lock(&mutex);//check cond
+    size--;
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
+}
+void FrameQueue::unrefItem(Frame *frame)
+{
+    av_frame_unref(frame->frame);
+    //avsubtitle_free(frame->sub);/////////if subtitle check;
+}
+
 int PacketQueue ::init()
 {
     memset(this,0,sizeof(PacketQueue));
@@ -96,6 +193,11 @@ double Clock::getValue()
         return ptsDrift + time - (time - lastUpdated) * (1.0 - speed);
     }
 
+}
+void Clock::setSpeed(double speed)
+{
+    setClock(getValue() , serial);
+    this->speed = speed;
 }
 int Codec::init(AVCodecContext *codecContext, PacketQueue *packetQueue,pthread_cond_t *emptyQueueCond)
 {

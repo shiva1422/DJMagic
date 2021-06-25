@@ -11,6 +11,7 @@
 #include "Texture.h"
 using namespace std;
 class MediaPlayer;
+class Frame;
 class VideoView : public ImageView{
 private:
     int numFrames=0,activeTexNo=0,nextUpdateInd = 0,boolFirstFrame = true;
@@ -26,6 +27,7 @@ private:
     Texture *texToDraw = nullptr;
 
     void checkUpdate();
+    void refreshVideo();
 
 public:
     friend class MediaPlayer;
@@ -34,6 +36,7 @@ public:
     virtual void draw() override;
     void setTexture(int imageWidth,int  imageHeight,int numFrames);
     void setFile(const char* assetLoc);
+    void updateTexture(Frame *frame);
 };
 
 

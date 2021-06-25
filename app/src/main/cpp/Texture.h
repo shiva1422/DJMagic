@@ -14,6 +14,7 @@ public:
     bool bDrawReady = false;
     double ptsTime = 0.0;//just for now later move from texture;
     static Texture createTexture(int width,int height);//now only rgba;
+    void reallocTexture(int width ,int height);
     static void swapTextures(Texture &tex1 ,Texture &tex2);
     uint8* mapBuf();
     void unmapBuf();
